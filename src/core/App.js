@@ -45,10 +45,11 @@ export class App {
     this.game = null;
     this.currentMapDef = null;
 
+    this.currentMode = 'campaign';
     this.screens = new Screens({
       settings: this.settings,
       audio: this.audio,
-      onSelectMap: (mapDef) => this.startGame(mapDef),
+      onSelectMap: (mapDef, mode) => this.startGame(mapDef, mode),
       onResume: () => this.resumeGame(),
       onQuitToMenu: () => this.quitToMenu(),
       onRetry: () => this.retry(),
@@ -69,7 +70,7 @@ export class App {
     this.screens.show('menu');
   }
 
-  startGame(mapDef) {
+  startGame(mapDef, mode = 'campaign') {
     if (this.menuBg) {
       this.menuBg.dispose();
       this.menuBg = null;
@@ -79,6 +80,7 @@ export class App {
       this.game = null;
     }
     this.currentMapDef = mapDef;
+    this.currentMode = mode;
     this.screens.hideEnd();
     this.screens.show('game');
     this.audio.setMood('calm');
@@ -86,13 +88,19 @@ export class App {
     this.game = new Game(this.container, mapDef, {
       settings: this.settings,
       audio: this.audio,
+      mode,
       onPauseRequest: () => this.pauseGame(),
-      onGameEnd: (won, wave) => this.screens.showEnd(won, wave, mapDef),
+      onGameEnd: (won, wave, stats) => this.screens.showEnd(won, wave, mapDef, mode, stats),
     });
   }
 
   pauseGame() {
     if (!this.game || this.game.state !== 'playing') return;
+    if (this.screens.settingsOpen) {
+      // settings stacks above pause — Esc should peel it off, not resume
+      this.screens.closeSettings();
+      return;
+    }
     if (this.screens.pauseOpen) {
       this.resumeGame();
       return;
@@ -107,7 +115,7 @@ export class App {
   }
 
   retry() {
-    this.startGame(this.currentMapDef);
+    this.startGame(this.currentMapDef, this.currentMode);
   }
 
   quitToMenu() {

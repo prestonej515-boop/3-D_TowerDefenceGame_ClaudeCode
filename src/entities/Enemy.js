@@ -6,17 +6,23 @@ const _perp = new THREE.Vector3();
 
 export class Enemy {
   // modifiers: per-map difficulty multipliers { hp, speed }
-  constructor(type, waypoints, hpMultiplier = 1, modifiers = { hp: 1, speed: 1 }) {
+  // opts: { speedMult (endless scaling), at: { position, waypointIndex } (summons) }
+  constructor(type, waypoints, hpMultiplier = 1, modifiers = { hp: 1, speed: 1 }, opts = {}) {
     this.type = type;
     const cfg = ENEMIES[type];
     this.cfg = cfg;
 
     this.maxHp = Math.round(cfg.hp * hpMultiplier * modifiers.hp);
     this.hp = this.maxHp;
-    this.baseSpeed = cfg.speed * modifiers.speed;
+    this.baseSpeed = cfg.speed * modifiers.speed * (opts.speedMult || 1);
     this.reward = cfg.reward;
     this.livesCost = cfg.livesCost;
     this.radius = cfg.size + 0.15; // projectile collision radius
+
+    this.hidden = !!cfg.hidden; // untargetable unless a tower seesHidden
+    this.enraged = false;
+    // summon bookkeeping (EnemyManager performs the actual spawns)
+    this.summonTimer = cfg.summons ? cfg.summons.interval : 0;
 
     this.waypoints = waypoints;
     this.waypointIndex = 0;
@@ -34,7 +40,14 @@ export class Enemy {
     this.deathHandled = false;
 
     this._buildMesh();
-    this.group.position.copy(this._offsetWaypoint(0));
+    if (opts.at) {
+      // summoned mid-path at the summoner's location
+      this.waypointIndex = opts.at.waypointIndex;
+      this.group.position.copy(opts.at.position);
+      this.group.position.y = 0;
+    } else {
+      this.group.position.copy(this._offsetWaypoint(0));
+    }
   }
 
   _buildMesh() {
@@ -43,11 +56,19 @@ export class Enemy {
 
     this.material = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
     this.baseColor = new THREE.Color(color);
+    if (this.hidden) {
+      // ghostly: transparent with a shimmer pulse (see update) so the player
+      // reads "present but untargetable" rather than a rendering bug
+      this.material.transparent = true;
+      this.material.opacity = 0.35;
+      this.material.emissive.setHex(color);
+      this.material.emissiveIntensity = 0.25;
+    }
 
     let bodyGeo;
-    if (this.type === 'armored') {
+    if (this.type === 'armored' || this.type === 'boss') {
       bodyGeo = new THREE.BoxGeometry(size * 1.6, size * 1.6, size * 1.9);
-    } else if (this.type === 'swarm') {
+    } else if (this.type === 'swarm' || this.type === 'minion') {
       bodyGeo = new THREE.SphereGeometry(size, 10, 8);
     } else {
       bodyGeo = new THREE.CapsuleGeometry(size * 0.7, size, 4, 8);
@@ -80,11 +101,54 @@ export class Enemy {
       );
       ridge.position.y = size * 1.15;
       this.body.add(ridge);
+    } else if (this.type === 'mage') {
+      // wizard hat + staff so the summoner reads as a caster
+      const hat = new THREE.Mesh(
+        new THREE.ConeGeometry(size * 0.55, size * 1.1, 8),
+        new THREE.MeshStandardMaterial({ color: 0x4a1f7a, roughness: 0.6 })
+      );
+      hat.position.y = size * 1.15;
+      hat.castShadow = true;
+      this.body.add(hat);
+      const staff = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.05, 0.05, size * 2.0),
+        new THREE.MeshStandardMaterial({ color: 0x6a4a2a, roughness: 0.9 })
+      );
+      staff.position.set(size * 0.75, 0, size * 0.2);
+      this.body.add(staff);
+      this.staffOrb = new THREE.Mesh(
+        new THREE.SphereGeometry(size * 0.2, 8, 6),
+        new THREE.MeshStandardMaterial({ color: 0xc9a2e8, emissive: 0xb060e8, emissiveIntensity: 1.5 })
+      );
+      this.staffOrb.position.set(size * 0.75, size * 1.05, size * 0.2);
+      this.body.add(this.staffOrb);
+    } else if (this.type === 'boss') {
+      // heavy armor plate, horns, and a crown ridge — the wave anchor
+      const plate = new THREE.Mesh(
+        new THREE.BoxGeometry(size * 1.85, size * 0.45, size * 2.05),
+        new THREE.MeshStandardMaterial({ color: 0x2a2228, roughness: 0.4, metalness: 0.6 })
+      );
+      plate.position.y = size * 0.9;
+      this.body.add(plate);
+      const hornMat = new THREE.MeshStandardMaterial({ color: 0xd8c9a0, roughness: 0.5 });
+      for (const side of [-1, 1]) {
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(size * 0.18, size * 0.7, 6), hornMat);
+        horn.position.set(side * size * 0.6, size * 1.25, size * 0.3);
+        horn.rotation.z = -side * 0.5;
+        horn.castShadow = true;
+        this.body.add(horn);
+      }
+      const ridge = new THREE.Mesh(
+        new THREE.BoxGeometry(size * 0.35, size * 0.6, size * 1.7),
+        new THREE.MeshStandardMaterial({ color: 0xd8b13a, roughness: 0.45, metalness: 0.5 })
+      );
+      ridge.position.y = size * 1.2;
+      this.body.add(ridge);
     }
 
     // HP bar (billboarded toward camera by update)
     this.hpBar = new THREE.Group();
-    const barW = 1.0;
+    const barW = this.cfg.boss ? 1.8 : 1.0;
     const bg = new THREE.Mesh(
       new THREE.PlaneGeometry(barW, 0.12),
       new THREE.MeshBasicMaterial({ color: 0x30121a, depthTest: false })
@@ -121,6 +185,7 @@ export class Enemy {
     for (const fx of this.statusEffects) {
       if (fx.speedMult != null) mult = Math.min(mult, fx.speedMult);
     }
+    if (this.enraged) mult *= this.cfg.enrage.speedMult;
     return this.baseSpeed * mult;
   }
 
@@ -175,6 +240,15 @@ export class Enemy {
     // bob for a bit of life
     this.body.position.y = this.cfg.size + 0.25 + Math.sin(performance.now() * 0.008 + this.lateralOffset * 10) * 0.06;
 
+    // hidden shimmer: opacity pulse marks "here but untargetable"
+    if (this.hidden) {
+      this.material.opacity = 0.28 + 0.14 * (0.5 + 0.5 * Math.sin(performance.now() * 0.004 + this.lateralOffset * 6));
+    }
+
+    if (this.staffOrb) {
+      this.staffOrb.material.emissiveIntensity = 1.2 + Math.sin(performance.now() * 0.006) * 0.5;
+    }
+
     if (this.hitFlash > 0) {
       this.hitFlash -= dt * 6;
       if (this.hitFlash <= 0) {
@@ -200,6 +274,9 @@ export class Enemy {
     this.hitFlash = 1;
     if (this.hp <= 0) {
       this.alive = false;
+    } else if (this.cfg.enrage && !this.enraged && this.hp / this.maxHp <= this.cfg.enrage.hpThreshold) {
+      this.enraged = true;
+      this._refreshTint();
     }
     return dealt;
   }
@@ -227,6 +304,8 @@ export class Enemy {
     const slowed = this.statusEffects.some((fx) => fx.speedMult != null && fx.speedMult < 1);
     if (slowed) {
       this.material.color.copy(this.baseColor).lerp(new THREE.Color(0x66ccff), 0.55);
+    } else if (this.enraged) {
+      this.material.color.copy(this.baseColor).lerp(new THREE.Color(0xff5020), 0.6);
     } else {
       this.material.color.copy(this.baseColor);
     }

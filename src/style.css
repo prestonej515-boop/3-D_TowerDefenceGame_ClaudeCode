@@ -114,6 +114,55 @@ button {
   opacity: 0.8;
 }
 
+/* ---- mode toggle (campaign / endless) ---- */
+
+#mode-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+#mode-toggle button {
+  padding: 10px 30px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #9db0c7;
+  background: rgba(22, 32, 50, 0.92);
+  border: none;
+  cursor: pointer;
+}
+
+#mode-toggle button.active {
+  background: linear-gradient(180deg, #7ee88f, #45b459);
+  color: #0c2a14;
+}
+
+/* ---- end-screen stats ---- */
+
+#end-stats {
+  width: 100%;
+  margin-bottom: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 12px;
+}
+
+.end-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 40px;
+  font-size: 15px;
+  color: #b8c6da;
+  padding: 3px 0;
+}
+
+.end-stat span:last-child {
+  color: #ffe98a;
+  font-weight: 700;
+}
+
 /* ---- map select cards ---- */
 
 #map-cards {
@@ -186,6 +235,16 @@ button {
   position: fixed;
   inset: 0;
   z-index: 40;
+}
+
+/* Settings must stack above the pause screen: both are .modal, and the
+   settings element comes first in the DOM, so without this the pause
+   overlay paints on top and blocks every settings control. */
+#settings-modal {
+  z-index: 50;
+}
+
+.modal {
   display: flex;
   align-items: center;
   justify-content: center;

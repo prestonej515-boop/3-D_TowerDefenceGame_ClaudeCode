@@ -22,6 +22,10 @@
     <div id="map-select-screen" class="screen hidden">
       <div class="menu-content wide">
         <h2 class="screen-title">Choose Your Battlefield</h2>
+        <div id="mode-toggle">
+          <button data-mode="campaign" class="active">Campaign</button>
+          <button data-mode="endless">Endless</button>
+        </div>
         <div id="map-cards"></div>
         <button id="map-back-btn" class="menu-btn subtle">&larr; Back</button>
       </div>
@@ -67,6 +71,7 @@
       <div class="modal-content">
         <h1 id="end-title"></h1>
         <p id="end-text"></p>
+        <div id="end-stats" class="hidden"></div>
         <button id="end-retry-btn" class="menu-btn primary">Retry Map</button>
         <button id="end-menu-btn" class="menu-btn">Main Menu</button>
       </div>
@@ -120,7 +125,7 @@
       <div id="placement-hint" class="hidden">Click a green tile to place &middot; Esc or right-click to cancel</div>
       <div id="toast-container"></div>
       <div id="damage-flash"></div>
-      <div id="hotkey-hint">1-3: towers &middot; Space: wave/speed &middot; Esc: pause</div>
+      <div id="hotkey-hint">1-5: towers &middot; Space: wave/speed &middot; Esc: pause</div>
     </div>
 
     <script type="module" src="/src/main.js"></script>

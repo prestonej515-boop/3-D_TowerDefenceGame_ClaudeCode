@@ -47,6 +47,12 @@ export class Tower {
     return this.stats.damage * this.stats.fireRate;
   }
 
+  // Whether this tower can target hidden enemies at its current tier.
+  // The Cannon is hard-excluded regardless of tier (neverSeesHidden).
+  get canSeeHidden() {
+    return !this.cfg.neverSeesHidden && !!this.stats.seesHidden;
+  }
+
   get liveDps() {
     let total = 0;
     for (const entry of this.damageLog) total += entry.amount;
@@ -168,6 +174,84 @@ export class Tower {
       keg.position.set(-0.35, 0.3, -0.3);
       this.lvl2Parts.add(keg);
       this.head.add(this.lvl2Parts);
+    } else if (this.type === 'sniper') {
+      // long rifle on a tripod mount with a scope
+      const mount = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, 0.5), accent);
+      mount.position.y = 0.17;
+      mount.castShadow = true;
+      this.head.add(mount);
+
+      this.barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.3, 8), dark);
+      this.barrel.rotation.x = Math.PI / 2;
+      this.barrel.position.set(0, 0.42, 0.55);
+      this.barrel.castShadow = true;
+      this.head.add(this.barrel);
+
+      const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.28, 8), dark);
+      scope.rotation.x = Math.PI / 2;
+      scope.position.set(0, 0.56, 0.1);
+      this.head.add(scope);
+      const lens = new THREE.Mesh(
+        new THREE.CircleGeometry(0.055, 8),
+        new THREE.MeshStandardMaterial({ color: 0x9fdcff, emissive: 0x3f8caf, emissiveIntensity: 0.8 })
+      );
+      lens.position.set(0, 0.56, 0.245);
+      this.head.add(lens);
+
+      for (const side of [-1, 1]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5), dark);
+        leg.position.set(side * 0.2, 0.2, 0.45);
+        leg.rotation.z = side * 0.5;
+        this.head.add(leg);
+      }
+
+      // lvl2: muzzle brake + longer scope
+      const brake = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.16, 8), gold);
+      brake.rotation.x = Math.PI / 2;
+      brake.position.set(0, 0.42, 1.2);
+      this.lvl2Parts.add(brake);
+      const scope2 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.2, 8), gold);
+      scope2.rotation.x = Math.PI / 2;
+      scope2.position.set(0, 0.56, -0.12);
+      this.lvl2Parts.add(scope2);
+      this.head.add(this.lvl2Parts);
+    } else if (this.type === 'mortar') {
+      // stubby high-angle tube on a base plate
+      const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 0.16, 10), dark);
+      plate.position.y = 0.08;
+      plate.castShadow = true;
+      this.head.add(plate);
+
+      this.barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.8, 10), accent);
+      this.barrel.rotation.x = Math.PI / 2 - 1.05; // steep upward tilt
+      this.barrel.position.set(0, 0.5, 0.18);
+      this.barrel.castShadow = true;
+      this.head.add(this.barrel);
+
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.045, 6, 12), dark);
+      rim.position.set(0, 0.5 + 0.4 * Math.cos(1.05), 0.18 + 0.4 * Math.sin(1.05));
+      rim.rotation.x = -1.05;
+      this.head.add(rim);
+
+      // support struts
+      for (const side of [-1, 1]) {
+        const strut = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.42, 0.07), dark);
+        strut.position.set(side * 0.3, 0.32, -0.12);
+        strut.rotation.x = -0.35;
+        this.head.add(strut);
+      }
+
+      // lvl2: gold muzzle ring + shell rack
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.04, 6, 12), gold);
+      band.position.copy(rim.position);
+      band.rotation.x = -1.05;
+      this.lvl2Parts.add(band);
+      for (let i = 0; i < 3; i++) {
+        const shell = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.16, 4, 6), gold);
+        shell.position.set(-0.42, 0.18, -0.15 + i * 0.15);
+        this.lvl2Parts.add(shell);
+      }
+      this.head.add(this.lvl2Parts);
     } else {
       // frost tower: crystal cluster + orbiting shards
       const crystalMat = new THREE.MeshStandardMaterial({
@@ -213,9 +297,27 @@ export class Tower {
       this.head.add(this.lvl2Parts);
     }
 
+    // tier-3 parts: a shared gold "rank crown" around the head, hidden until
+    // the final upgrade (per-type lvl2Parts carry the mid-tier flair)
+    this.lvl3Parts = new THREE.Group();
+    this.lvl3Parts.visible = false;
+    const crown = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.05, 8, 20), gold);
+    crown.rotation.x = Math.PI / 2;
+    crown.position.y = 0.05;
+    this.lvl3Parts.add(crown);
+    for (let i = 0; i < 4; i++) {
+      const stud = new THREE.Mesh(new THREE.OctahedronGeometry(0.08), gold);
+      const a = (i / 4) * Math.PI * 2;
+      stud.position.set(Math.cos(a) * 0.55, 0.12, Math.sin(a) * 0.55);
+      this.lvl3Parts.add(stud);
+    }
+    this.head.add(this.lvl3Parts);
+
     // projectile spawn point
+    const muzzleY = { slow: 0.6, sniper: 0.42, mortar: 0.75 }[this.type] ?? 0.32;
+    const muzzleZ = { slow: 0, sniper: 1.1, mortar: 0.35 }[this.type] ?? 0.85;
     this.muzzle = new THREE.Object3D();
-    this.muzzle.position.set(0, this.type === 'slow' ? 0.6 : 0.32, this.type === 'slow' ? 0 : 0.85);
+    this.muzzle.position.set(0, muzzleY, muzzleZ);
     this.head.add(this.muzzle);
 
     // range ring (shown when selected)
@@ -250,8 +352,9 @@ export class Tower {
     this.level++;
     this.rangeRing.geometry.dispose();
     this.rangeRing.geometry = new THREE.RingGeometry(this.stats.range - 0.06, this.stats.range, 48);
-    this.lvl2Parts.visible = true;
-    this.lvl2Parts.traverse((obj) => {
+    const tierParts = this.level === 1 ? this.lvl2Parts : this.lvl3Parts;
+    tierParts.visible = true;
+    tierParts.traverse((obj) => {
       obj.userData.tower = this;
     });
     return true;
@@ -272,17 +375,28 @@ export class Tower {
   //  - nearest: closest to the tower
   //  - first: furthest along the path
   //  - strongest: highest current HP
+  // Hidden enemies are only targetable when canSeeHidden; towers with a
+  // minRange (mortar) can't hit enemies closer than it.
+  _canTarget(enemy, dSq, rangeSq, minSq) {
+    if (dSq > rangeSq || dSq < minSq) return false;
+    if (enemy.hidden && !this.canSeeHidden) return false;
+    return true;
+  }
+
   acquireTarget(enemies) {
     const rangeSq = this.stats.range * this.stats.range;
+    const minR = this.stats.minRange || 0;
+    const minSq = minR * minR;
     if (this.target && this.target.alive) {
-      if (this.group.position.distanceToSquared(this.target.position) <= rangeSq) return;
+      const dSq = this.group.position.distanceToSquared(this.target.position);
+      if (this._canTarget(this.target, dSq, rangeSq, minSq)) return;
     }
     this.target = null;
     let bestScore = -Infinity;
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
       const dSq = this.group.position.distanceToSquared(enemy.position);
-      if (dSq > rangeSq) continue;
+      if (!this._canTarget(enemy, dSq, rangeSq, minSq)) continue;
       let score;
       if (this.targetingMode === 'first') score = enemy.progress;
       else if (this.targetingMode === 'strongest') score = enemy.hp;
@@ -310,6 +424,10 @@ export class Tower {
         this.barrel.scale.y = 1.5 * (1 + k * 0.35);
       } else if (this.type === 'splash') {
         this.barrel.position.z = 0.42 - k * 0.2;
+      } else if (this.type === 'sniper') {
+        this.barrel.position.z = 0.55 - k * 0.28;
+      } else if (this.type === 'mortar') {
+        this.barrel.position.y = 0.5 - k * 0.12;
       } else {
         for (const b of this.barrels) b.position.z = 0.5 - k * 0.16;
       }
@@ -349,6 +467,7 @@ export class Tower {
         splashRadius: s.splashRadius || 0,
         slowFactor: s.slowFactor || null,
         slowDuration: s.slowDuration || 0,
+        arc: !!this.cfg.arc,
       };
     }
     return null;

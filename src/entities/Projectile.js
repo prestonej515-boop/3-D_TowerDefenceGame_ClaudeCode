@@ -20,7 +20,16 @@ export class Projectile {
     this.splashRadius = opts.splashRadius || 0;
     this.slowFactor = opts.slowFactor || null;
     this.slowDuration = opts.slowDuration || 0;
-    this.life = 4; // failsafe expiry (seconds)
+    // ballistic arc (mortar): height driven by initial horizontal distance
+    this.arc = !!opts.arc;
+    if (this.arc) {
+      this.originY = origin.y;
+      const dx = this.lastTargetPos.x - origin.x;
+      const dz = this.lastTargetPos.z - origin.z;
+      this.initialDist = Math.max(Math.hypot(dx, dz), 0.001);
+      this.arcHeight = Math.min(Math.max(this.initialDist * 0.4, 1.5), 4.5);
+    }
+    this.life = 6; // failsafe expiry (seconds; arcing shells fly longer)
     this.trailAcc = 0; // trail spawn accumulator (managed by TowerManager)
     this.done = false;
 
@@ -50,6 +59,7 @@ export class Projectile {
     }
 
     _toTarget.subVectors(this.lastTargetPos, this.mesh.position);
+    if (this.arc) _toTarget.y = 0; // arc shells home horizontally; y is parametric
     const dist = _toTarget.length();
     const step = this.speed * dt;
     const hitRadius = this.target && this.target.alive ? this.target.radius : 0.25;
@@ -69,6 +79,12 @@ export class Projectile {
 
     _toTarget.normalize();
     this.mesh.position.addScaledVector(_toTarget, step);
+    if (this.arc) {
+      // parametric lob: remaining-distance fraction drives a sine arch
+      const t = 1 - Math.min(dist / this.initialDist, 1);
+      this.mesh.position.y =
+        this.originY + (this.lastTargetPos.y - this.originY) * t + Math.sin(t * Math.PI) * this.arcHeight;
+    }
     return null;
   }
 

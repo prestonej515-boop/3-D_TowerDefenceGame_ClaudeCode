@@ -1,5 +1,6 @@
 import { Tower } from './Tower.js';
 import { Projectile } from './Projectile.js';
+import { TOWERS } from '../config.js';
 
 const TRAIL_INTERVAL = 0.035; // seconds between trail puffs per projectile
 
@@ -17,13 +18,14 @@ export class TowerManager {
     this.onDamage = onDamage || (() => {}); // floating damage numbers
   }
 
-  canPlace(col, row) {
-    return this.map.isBuildable(col, row);
+  canPlace(col, row, type) {
+    return this.map.canPlaceType(col, row, type ? TOWERS[type] : null);
   }
 
   place(type, col, row) {
-    if (!this.canPlace(col, row)) return null;
+    if (!this.canPlace(col, row, type)) return null;
     const pos = this.map.gridToWorld(col, row);
+    pos.y = this.map.placementHeight(col, row); // elevated platforms raise the base
     const tower = new Tower(type, pos, { col, row });
     this.towers.push(tower);
     this.scene.add(tower.group);
@@ -79,8 +81,11 @@ export class TowerManager {
   _resolveImpact(impact, enemies) {
     if (impact.splashRadius > 0) {
       const rSq = impact.splashRadius * impact.splashRadius;
+      const seesHidden = impact.sourceTower ? impact.sourceTower.canSeeHidden : false;
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
+        // hidden enemies pass through splash unharmed unless the source sees them
+        if (enemy.hidden && !seesHidden) continue;
         if (enemy.position.distanceToSquared(impact.point) <= rSq) {
           this._applyDamage(enemy, impact.damage, impact.sourceTower);
         }
