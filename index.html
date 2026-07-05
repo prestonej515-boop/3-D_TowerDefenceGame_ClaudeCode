@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FableTower — 3D Tower Defense</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="ui">
+      <!-- Top HUD bar -->
+      <div id="hud">
+        <div class="hud-item" id="hud-gold"><span class="hud-icon">&#9679;</span> <span id="gold-value">0</span></div>
+        <div class="hud-item" id="hud-wave">Wave <span id="wave-value">0 / 0</span></div>
+        <div class="hud-item" id="hud-lives"><span class="hud-icon heart">&#10084;</span> <span id="lives-value">0</span></div>
+      </div>
+
+      <!-- Tower selection panel -->
+      <div id="tower-bar"></div>
+
+      <!-- Start wave button -->
+      <button id="start-wave-btn">Start Wave 1</button>
+
+      <!-- Selected tower panel -->
+      <div id="tower-panel" class="hidden">
+        <div id="tower-panel-title"></div>
+        <div id="tower-panel-stats"></div>
+        <button id="upgrade-btn"></button>
+        <button id="sell-btn"></button>
+        <button id="close-panel-btn">&times;</button>
+      </div>
+
+      <!-- Placement hint -->
+      <div id="placement-hint" class="hidden">Click a green tile to place &middot; Esc or right-click to cancel</div>
+
+      <!-- Damage flash -->
+      <div id="damage-flash"></div>
+
+      <!-- Game over / win overlay -->
+      <div id="overlay" class="hidden">
+        <div id="overlay-content">
+          <h1 id="overlay-title"></h1>
+          <p id="overlay-text"></p>
+          <button id="restart-btn">Play Again</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

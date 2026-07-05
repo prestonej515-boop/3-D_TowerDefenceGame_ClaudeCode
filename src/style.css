@@ -1,0 +1,283 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #1a2331;
+  user-select: none;
+}
+
+#app,
+#app canvas {
+  position: fixed;
+  inset: 0;
+  display: block;
+}
+
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#ui button,
+#tower-bar .tower-btn,
+#tower-panel {
+  pointer-events: auto;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---- Top HUD ---- */
+#hud {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 28px;
+  background: rgba(15, 22, 34, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 10px 26px;
+  color: #e8eef7;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.hud-icon {
+  color: #f4c542;
+}
+
+.hud-icon.heart {
+  color: #e05563;
+}
+
+/* ---- Tower selection bar ---- */
+#tower-bar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+}
+
+.tower-btn {
+  width: 118px;
+  padding: 10px 8px;
+  background: rgba(15, 22, 34, 0.88);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  color: #e8eef7;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, transform 0.1s;
+}
+
+.tower-btn:hover {
+  transform: translateY(-2px);
+}
+
+.tower-btn.active {
+  border-color: #6fdc7f;
+  box-shadow: 0 0 12px rgba(111, 220, 127, 0.4);
+}
+
+.tower-btn.unaffordable {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tower-btn .t-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.tower-btn .t-swatch {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  margin: 6px 0;
+}
+
+.tower-btn .t-cost {
+  font-size: 13px;
+  color: #f4c542;
+}
+
+.tower-btn .t-desc {
+  font-size: 11px;
+  color: #9db0c7;
+  margin-top: 3px;
+}
+
+/* ---- Start wave button ---- */
+#start-wave-btn {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  padding: 14px 26px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #10321a;
+  background: linear-gradient(180deg, #7ee88f, #4fbf63);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: transform 0.1s, opacity 0.2s;
+}
+
+#start-wave-btn:hover:not(:disabled) {
+  transform: scale(1.04);
+}
+
+#start-wave-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ---- Selected tower panel ---- */
+#tower-panel {
+  position: absolute;
+  right: 24px;
+  top: 80px;
+  width: 220px;
+  background: rgba(15, 22, 34, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 16px;
+  color: #e8eef7;
+}
+
+#tower-panel-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+#tower-panel-stats {
+  font-size: 13px;
+  color: #b8c6da;
+  line-height: 1.6;
+  margin-bottom: 12px;
+  white-space: pre-line;
+}
+
+#tower-panel button {
+  display: block;
+  width: 100%;
+  padding: 9px;
+  margin-top: 8px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#upgrade-btn {
+  background: #3d7bd6;
+  color: #fff;
+}
+
+#upgrade-btn:disabled {
+  background: #33415a;
+  color: #7b8aa3;
+  cursor: default;
+}
+
+#sell-btn {
+  background: #8a3540;
+  color: #fff;
+}
+
+#close-panel-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px !important;
+  height: 26px;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  color: #9db0c7 !important;
+  font-size: 18px !important;
+}
+
+/* ---- Placement hint ---- */
+#placement-hint {
+  position: absolute;
+  bottom: 108px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 22, 34, 0.85);
+  color: #cfe3ff;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+/* ---- Damage flash ---- */
+#damage-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(220, 50, 50, 0.55) 100%);
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+
+#damage-flash.active {
+  opacity: 1;
+  transition: opacity 0.05s;
+}
+
+/* ---- Overlay ---- */
+#overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 12, 20, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+#overlay-content {
+  text-align: center;
+  color: #e8eef7;
+}
+
+#overlay-content h1 {
+  font-size: 52px;
+  margin-bottom: 10px;
+}
+
+#overlay-content p {
+  font-size: 18px;
+  color: #b8c6da;
+  margin-bottom: 26px;
+}
+
+#restart-btn {
+  padding: 14px 38px;
+  font-size: 18px;
+  font-weight: 700;
+  background: linear-gradient(180deg, #7ee88f, #4fbf63);
+  color: #10321a;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+}
