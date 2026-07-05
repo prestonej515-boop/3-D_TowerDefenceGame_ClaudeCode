@@ -3,6 +3,7 @@ import { MAPS, THEMES } from '../config/maps.js';
 import { Settings } from '../systems/Settings.js';
 import { AudioManager } from '../systems/AudioManager.js';
 import { Screens } from '../ui/screens.js';
+import { preloadModels } from '../systems/ModelLibrary.js';
 import { createSceneContext } from '../scene/sceneSetup.js';
 import { MapBuilder } from '../scene/MapBuilder.js';
 import { Game } from './Game.js';
@@ -66,11 +67,17 @@ export class App {
     document.addEventListener('pointerdown', unlockAudio);
     document.addEventListener('keydown', unlockAudio);
 
+    // kick off tower-model loading while the player sits in the menu
+    this.modelsLoaded = preloadModels().catch((err) => {
+      console.error('Tower models failed to load:', err);
+    });
+
     this.menuBg = new MenuBackground(container, this.settings);
     this.screens.show('menu');
   }
 
-  startGame(mapDef, mode = 'campaign') {
+  async startGame(mapDef, mode = 'campaign') {
+    await this.modelsLoaded; // ~instant unless the menu was skipped fast
     if (this.menuBg) {
       this.menuBg.dispose();
       this.menuBg = null;
