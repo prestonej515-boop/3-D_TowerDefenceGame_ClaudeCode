@@ -4,11 +4,14 @@ const _toTarget = new THREE.Vector3();
 
 // A real traveling projectile with per-frame collision checks (no hitscan).
 // Homes toward its target; if the target dies mid-flight it continues to the
-// last known position (splash shots still explode there).
+// last known position (splash shots still explode there). Carries a reference
+// to its source tower so damage/kills can be attributed for the DPS meter.
 export class Projectile {
   constructor(scene, origin, target, opts) {
     this.scene = scene;
     this.target = target;
+    this.sourceTower = opts.sourceTower || null;
+    this.color = opts.color;
     this.lastTargetPos = target.position.clone();
     this.lastTargetPos.y = target.body.getWorldPosition(new THREE.Vector3()).y;
 
@@ -18,6 +21,7 @@ export class Projectile {
     this.slowFactor = opts.slowFactor || null;
     this.slowDuration = opts.slowDuration || 0;
     this.life = 4; // failsafe expiry (seconds)
+    this.trailAcc = 0; // trail spawn accumulator (managed by TowerManager)
     this.done = false;
 
     this.mesh = new THREE.Mesh(
@@ -25,7 +29,7 @@ export class Projectile {
       new THREE.MeshStandardMaterial({
         color: opts.color,
         emissive: opts.color,
-        emissiveIntensity: 0.8,
+        emissiveIntensity: 2.2, // bright enough to catch the bloom pass
       })
     );
     this.mesh.position.copy(origin);
@@ -40,7 +44,6 @@ export class Projectile {
       return null;
     }
 
-    // refresh homing point while the target lives
     if (this.target && this.target.alive) {
       this.lastTargetPos.copy(this.target.position);
       this.lastTargetPos.y = this.target.body.getWorldPosition(_toTarget).y;
@@ -49,15 +52,14 @@ export class Projectile {
     _toTarget.subVectors(this.lastTargetPos, this.mesh.position);
     const dist = _toTarget.length();
     const step = this.speed * dt;
-
     const hitRadius = this.target && this.target.alive ? this.target.radius : 0.25;
 
     if (dist <= Math.max(step, hitRadius)) {
-      // impact
       this.done = true;
       return {
         point: this.lastTargetPos.clone(),
         directTarget: this.target && this.target.alive ? this.target : null,
+        sourceTower: this.sourceTower,
         damage: this.damage,
         splashRadius: this.splashRadius,
         slowFactor: this.slowFactor,

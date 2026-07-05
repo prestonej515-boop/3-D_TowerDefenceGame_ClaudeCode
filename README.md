@@ -1,6 +1,6 @@
-# FableTower — 3D Tower Defense Prototype
+# FableTower — 3D Tower Defense
 
-A playable wave-based 3D tower defense built with **Three.js + Vite** (vanilla JS, no backend).
+A wave-based 3D tower defense built with **Three.js + Vite** (vanilla JS, no backend, zero asset files — all textures, models, and audio are procedurally generated).
 
 ## Run it
 
@@ -11,67 +11,78 @@ npm run dev
 
 Open the printed URL (default `http://localhost:5173`).
 
+## Features
+
+- **Main menu** with an animated 3D backdrop, map select, and settings
+- **3 maps / difficulties:** Green Meadow (Easy), Scorched Dunes (Medium), Frozen Pass (Hard) — each with its own theme (grass/desert/snow), path layout, and modifiers (enemy HP/speed up, gold income down, fewer lives)
+- **Procedural audio:** synthesized SFX for every action + a generative chiptune loop that shifts from calm to tense while a wave is active
+- **Settings** (persisted in localStorage): music/SFX volume, shadow quality, screen shake
+- **Pause menu** (Esc) and **1×/2× game speed**
+- **Tower depth:** per-tower live DPS meter (10s window), total damage, kills, targeting mode (Near / First / Strong), and an upgrade preview showing exact stat deltas before you buy
+- **Graphics:** bloom post-processing, ACES tone mapping, themed lighting/fog, multi-part tower models with visible level-2 upgrades, enemy faces, projectile trails, muzzle flashes, floating damage numbers, gold popups, death squash + particle bursts, drifting clouds, swaying trees, animated spawn portal
+
 ## Controls
 
 | Action | Input |
 | --- | --- |
-| Orbit camera | Left-drag |
-| Pan camera | Right-drag (target stays clamped to the map) |
-| Zoom | Scroll wheel (clamped 12–60 units) |
-| Place a tower | Click a tower card → click a green tile (ghost turns red on invalid tiles) |
+| Orbit / pan / zoom | Left-drag / right-drag / scroll (clamped to the map) |
+| Place a tower | Tower card or hotkey `1`/`2`/`3` → click a green tile |
 | Cancel placement | `Esc`, right-click, or click the card again |
-| Inspect / upgrade / sell | Click a placed tower |
-| Start the next wave | **Start Wave** button (waves never auto-start) |
+| Inspect / upgrade / sell / retarget | Click a placed tower |
+| Start wave / toggle speed | Button or `Space` |
+| Pause | `Esc` or the HUD pause button |
 
 ## Gameplay
 
-- **10 waves**, escalating mix + per-wave HP scaling (`WAVE_HP_GROWTH`).
-- **Enemies:** Basic (fast, low HP), Armored (slow, tanky, costs 2 lives), Swarm (very fast, fragile, spawns in packs).
-- **Towers:** Gunner (fast single-target), Cannon (slow AoE splash), Frost (low damage + slow debuff). Each has one upgrade tier.
-- **Economy:** gold from kills + wave-clear bonuses; selling refunds 70% of invested gold.
-- **Targeting rule:** towers target the **nearest enemy to the tower** among those in range, and keep their current target while it stays alive and in range.
-- Projectiles are real traveling meshes with per-frame collision checks — no hitscan.
+- **10 waves**, escalating mix + per-wave HP scaling, difficulty-modified per map.
+- **Enemies:** Basic (fast), Armored (tanky, 2 lives), Swarm (fragile packs).
+- **Towers:** Gunner (fast single-target), Cannon (AoE splash), Frost (slow debuff) — one upgrade tier each with distinct level-2 looks.
+- **Targeting:** default rule is nearest-to-tower (sticky while valid); switchable per tower to First (furthest along path) or Strong (highest HP).
+- Projectiles are real traveling meshes with per-frame collision — no hitscan.
 
 ## Project structure
 
 ```
-index.html            HTML shell + HUD/panel markup
+index.html              screens + HUD markup
 src/
-  main.js             entry point
-  config.js           ALL balance data: map, enemies, towers, waves, economy, effects
-  style.css           HUD / panel styling
-  core/Game.js        game loop, input (raycast placement & selection), state machine
+  main.js               entry — creates App
+  config.js             enemies, towers, waves, economy, effects tuning
+  config/maps.js        3 map defs + THEMES palettes
+  core/
+    App.js              screen state machine, game lifecycle, menu backdrop
+    Game.js             one playthrough: loop, input, pause/speed, dispose()
   scene/
-    sceneSetup.js     renderer, camera, constrained OrbitControls, lights
-    textures.js       procedural canvas textures (grass, dirt)
-    MapBuilder.js     ground, path tiles, grid helpers, base/spawn markers, trees
+    sceneSetup.js       renderer, camera, themed lights, shadow tiers, dispose
+    postfx.js           EffectComposer + bloom
+    textures.js         procedural ground/path/text/glow textures
+    MapBuilder.js       map-def-driven ground/path/markers/decorations/clouds
   entities/
-    Enemy.js          waypoint movement, HP bar, slow debuff, hit flash
-    EnemyManager.js   spawn/update/remove, kill & leak callbacks
-    Tower.js          per-type meshes, targeting, fire cooldown, recoil, upgrades
-    TowerManager.js   placement, sell, projectile ownership, splash resolution
-    Projectile.js     homing projectile with collision + lifetime failsafe
+    Enemy.js            waypoint movement, difficulty mods, faces, squash death
+    EnemyManager.js     spawn/update/remove, kill & leak callbacks
+    Tower.js            multi-part models, DPS tracking, targeting modes
+    TowerManager.js     placement, projectiles, damage attribution
+    Projectile.js       homing projectile with collision + source tower
   systems/
-    WaveManager.js    wave config → timed spawn queue, clear/win detection
-    Economy.js        gold + lives
-    Effects.js        death bursts, splash puffs, camera shake
-  ui/UI.js            DOM HUD, tower bar, upgrade/sell panel, end screens
+    WaveManager.js      wave config → timed spawn queue
+    Economy.js          gold (difficulty-scaled income) + lives
+    Effects.js          bursts, trails, flashes, damage numbers, shake
+    AudioManager.js     procedural SFX + generative music (Web Audio)
+    Settings.js         localStorage settings + change listeners
+  ui/
+    screens.js          menu / map select / settings / pause / end screens
+    UI.js               HUD, tower bar, tower panel, wave preview, toasts
 ```
 
-## Known limitations / rough edges
+## Known limitations
 
-- Restart reloads the page rather than doing an in-place state reset.
-- Placement mode exits after each placement (no shift-to-place-multiple).
-- HP bars are simple billboarded planes; no damage numbers.
-- Enemy path corners are sharp turns, not smoothed curves.
-- No sound.
-- Balance is a first pass — tune everything in `src/config.js`.
+- Path corners are sharp turns, not smoothed curves.
+- Music is a single generative progression (two moods), not full tracks.
+- Balance is a second pass — tune in `src/config.js` / `src/config/maps.js`.
 
 ## Where a future gimmick can plug in
 
-- **`src/config.js`** — add gimmick tuning data without touching logic.
-- **`WaveManager` callbacks** (`onWaveClear`, `onAllWavesCleared`) — natural hooks for between-wave events (day/night flip, path switch, shop).
-- **`Enemy.applySlow` / `slowFactor` pattern** — generalize into a status-effect list for new debuffs/buffs.
-- **`MapBuilder.worldWaypoints`** — swap or mutate at runtime for path-switching mechanics; `pathCells` recompute is isolated in `_computePathCells`.
-- **`Game._tick`** — single ordered update loop; a `GimmickManager.update(dt)` slots in cleanly.
-- **`Tower` upgrade system** — `levels` array in config already supports more tiers or branching (fusion could merge two towers into a new config entry).
+- `WaveManager` callbacks (`onWaveClear`) — between-wave events (day/night, shops, path switches)
+- `Enemy.applySlow` — generalize into a status-effect list
+- `MapBuilder.worldWaypoints` — swappable at runtime for path-switching
+- `Game._tick` — a `GimmickManager.update(dt)` slots into the ordered loop
+- Tower `levels` arrays — more tiers or fusion-style branching

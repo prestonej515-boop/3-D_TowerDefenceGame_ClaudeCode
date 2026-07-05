@@ -9,43 +9,118 @@
   <body>
     <div id="app"></div>
 
-    <div id="ui">
-      <!-- Top HUD bar -->
+    <!-- ============ Menu screens ============ -->
+    <div id="menu-screen" class="screen hidden">
+      <div class="menu-content">
+        <h1 class="game-title">FableTower</h1>
+        <p class="game-subtitle">Hold the line. Build smart. Survive ten waves.</p>
+        <button id="menu-play-btn" class="menu-btn primary">Play</button>
+        <button id="menu-settings-btn" class="menu-btn">Settings</button>
+      </div>
+    </div>
+
+    <div id="map-select-screen" class="screen hidden">
+      <div class="menu-content wide">
+        <h2 class="screen-title">Choose Your Battlefield</h2>
+        <div id="map-cards"></div>
+        <button id="map-back-btn" class="menu-btn subtle">&larr; Back</button>
+      </div>
+    </div>
+
+    <div id="settings-modal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Settings</h2>
+        <label class="setting-row">
+          <span>Music volume</span>
+          <input type="range" id="setting-music" min="0" max="1" step="0.05" />
+        </label>
+        <label class="setting-row">
+          <span>Sound effects</span>
+          <input type="range" id="setting-sfx" min="0" max="1" step="0.05" />
+        </label>
+        <label class="setting-row">
+          <span>Shadow quality</span>
+          <select id="setting-shadows">
+            <option value="off">Off (fast)</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+        <label class="setting-row">
+          <span>Screen shake</span>
+          <input type="checkbox" id="setting-shake" />
+        </label>
+        <button id="settings-close-btn" class="menu-btn primary">Done</button>
+      </div>
+    </div>
+
+    <div id="pause-screen" class="modal hidden">
+      <div class="modal-content">
+        <h2>Paused</h2>
+        <button id="pause-resume-btn" class="menu-btn primary">Resume</button>
+        <button id="pause-settings-btn" class="menu-btn">Settings</button>
+        <button id="pause-quit-btn" class="menu-btn danger">Quit to Menu</button>
+      </div>
+    </div>
+
+    <div id="end-screen" class="modal hidden">
+      <div class="modal-content">
+        <h1 id="end-title"></h1>
+        <p id="end-text"></p>
+        <button id="end-retry-btn" class="menu-btn primary">Retry Map</button>
+        <button id="end-menu-btn" class="menu-btn">Main Menu</button>
+      </div>
+    </div>
+
+    <!-- ============ In-game HUD ============ -->
+    <div id="ui" class="hidden">
       <div id="hud">
-        <div class="hud-item" id="hud-gold"><span class="hud-icon">&#9679;</span> <span id="gold-value">0</span></div>
-        <div class="hud-item" id="hud-wave">Wave <span id="wave-value">0 / 0</span></div>
-        <div class="hud-item" id="hud-lives"><span class="hud-icon heart">&#10084;</span> <span id="lives-value">0</span></div>
+        <div class="hud-item"><span class="hud-icon">&#9679;</span> <span id="gold-value">0</span></div>
+        <div class="hud-item">Wave <span id="wave-value">0 / 0</span></div>
+        <div class="hud-item"><span class="hud-icon heart">&#10084;</span> <span id="lives-value">0</span></div>
+        <div class="hud-item map-name" id="hud-map-name"></div>
+        <button id="pause-btn" title="Pause (Esc)">&#10073;&#10073;</button>
       </div>
 
-      <!-- Tower selection panel -->
       <div id="tower-bar"></div>
 
-      <!-- Start wave button -->
-      <button id="start-wave-btn">Start Wave 1</button>
+      <div id="wave-controls">
+        <div id="wave-preview" class="hidden">
+          <span class="wp-label">Next:</span>
+          <span id="wave-preview-items"></span>
+        </div>
+        <div class="wave-buttons">
+          <button id="speed-btn" title="Game speed (Space during wave)">1&times;</button>
+          <button id="start-wave-btn">Start Wave 1</button>
+        </div>
+      </div>
 
-      <!-- Selected tower panel -->
       <div id="tower-panel" class="hidden">
-        <div id="tower-panel-title"></div>
-        <div id="tower-panel-stats"></div>
+        <div id="tower-panel-header">
+          <span id="tower-panel-title"></span>
+          <span id="tower-panel-pips"></span>
+        </div>
+        <table id="tower-stats-table"></table>
+        <div id="tower-live-stats"></div>
+        <div class="panel-section-label">Targeting</div>
+        <div id="targeting-modes">
+          <button data-mode="nearest">Near</button>
+          <button data-mode="first">First</button>
+          <button data-mode="strongest">Strong</button>
+        </div>
+        <div id="upgrade-preview" class="hidden">
+          <div class="panel-section-label">Next upgrade</div>
+          <div id="upgrade-preview-rows"></div>
+        </div>
         <button id="upgrade-btn"></button>
         <button id="sell-btn"></button>
         <button id="close-panel-btn">&times;</button>
       </div>
 
-      <!-- Placement hint -->
       <div id="placement-hint" class="hidden">Click a green tile to place &middot; Esc or right-click to cancel</div>
-
-      <!-- Damage flash -->
+      <div id="toast-container"></div>
       <div id="damage-flash"></div>
-
-      <!-- Game over / win overlay -->
-      <div id="overlay" class="hidden">
-        <div id="overlay-content">
-          <h1 id="overlay-title"></h1>
-          <p id="overlay-text"></p>
-          <button id="restart-btn">Play Again</button>
-        </div>
-      </div>
+      <div id="hotkey-hint">1-3: towers &middot; Space: wave/speed &middot; Esc: pause</div>
     </div>
 
     <script type="module" src="/src/main.js"></script>

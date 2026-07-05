@@ -4,22 +4,7 @@
 // so future mechanics can hook in without touching core logic.
 // ---------------------------------------------------------------------------
 
-export const MAP = {
-  cols: 16,
-  rows: 12,
-  tileSize: 2,
-  // Waypoints in grid coordinates [col, row]. May extend past the grid edge
-  // so enemies walk on from off-screen and the base sits at the map border.
-  waypoints: [
-    [-1, 2],
-    [12, 2],
-    [12, 6],
-    [3, 6],
-    [3, 9],
-    [16, 9],
-  ],
-  treeCount: 14, // decorative trees scattered on non-path tiles (block building)
-};
+// Map layouts and themes live in ./config/maps.js
 
 export const ECONOMY = {
   startGold: 120,

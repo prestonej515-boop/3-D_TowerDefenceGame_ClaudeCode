@@ -1,17 +1,20 @@
-import * as THREE from 'three';
 import { Tower } from './Tower.js';
 import { Projectile } from './Projectile.js';
-import { TOWERS } from '../config.js';
 
-// Owns towers and their projectiles: placement, upgrades, selling,
-// firing, and projectile impact resolution (including splash).
+const TRAIL_INTERVAL = 0.035; // seconds between trail puffs per projectile
+
+// Owns towers and their projectiles: placement, upgrades, selling, firing,
+// impact resolution (incl. splash), and damage attribution back to towers.
 export class TowerManager {
-  constructor(scene, map, { onImpact } = {}) {
+  constructor(scene, map, { onImpact, onShot, onTrail, onDamage } = {}) {
     this.scene = scene;
     this.map = map;
     this.towers = [];
     this.projectiles = [];
-    this.onImpact = onImpact || (() => {}); // for effects hooks
+    this.onImpact = onImpact || (() => {}); // splash explosions etc.
+    this.onShot = onShot || (() => {}); // muzzle flash + fire SFX
+    this.onTrail = onTrail || (() => {}); // projectile trail puffs
+    this.onDamage = onDamage || (() => {}); // floating damage numbers
   }
 
   canPlace(col, row) {
@@ -39,20 +42,24 @@ export class TowerManager {
   }
 
   update(dt, enemies) {
-    // towers fire
     for (const tower of this.towers) {
       const shot = tower.update(dt, enemies);
       if (shot) {
-        this.projectiles.push(
-          new Projectile(this.scene, shot.origin, shot.target, shot)
-        );
+        this.projectiles.push(new Projectile(this.scene, shot.origin, shot.target, shot));
+        this.onShot(shot);
       }
     }
 
-    // projectiles fly & resolve impacts
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       const impact = p.update(dt);
+
+      p.trailAcc += dt;
+      if (!p.done && p.trailAcc >= TRAIL_INTERVAL) {
+        p.trailAcc = 0;
+        this.onTrail(p.mesh.position, p.color);
+      }
+
       if (impact) this._resolveImpact(impact, enemies);
       if (p.done) {
         p.dispose();
@@ -61,26 +68,32 @@ export class TowerManager {
     }
   }
 
+  _applyDamage(enemy, amount, sourceTower) {
+    const dealt = enemy.takeDamage(amount);
+    if (dealt > 0) {
+      if (sourceTower) sourceTower.recordDamage(dealt, !enemy.alive);
+      this.onDamage(enemy, dealt);
+    }
+  }
+
   _resolveImpact(impact, enemies) {
     if (impact.splashRadius > 0) {
-      // AoE: damage everything within the radius of the impact point
       const rSq = impact.splashRadius * impact.splashRadius;
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
         if (enemy.position.distanceToSquared(impact.point) <= rSq) {
-          enemy.takeDamage(impact.damage);
+          this._applyDamage(enemy, impact.damage, impact.sourceTower);
         }
       }
     } else if (impact.directTarget) {
-      impact.directTarget.takeDamage(impact.damage);
-      if (impact.slowFactor) {
+      this._applyDamage(impact.directTarget, impact.damage, impact.sourceTower);
+      if (impact.slowFactor && impact.directTarget.alive) {
         impact.directTarget.applySlow(impact.slowFactor, impact.slowDuration);
       }
     }
     this.onImpact(impact);
   }
 
-  // raycast helper: find a tower from an intersected object
   towerFromObject(object) {
     let obj = object;
     while (obj) {

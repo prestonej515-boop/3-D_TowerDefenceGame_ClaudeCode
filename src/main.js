@@ -1,7 +1,6 @@
-import { Game } from './core/Game.js';
+import { App } from './core/App.js';
 
-const game = new Game(document.getElementById('app'));
-game.start();
+const app = new App(document.getElementById('app'));
 
 // dev-console handle for debugging/balancing
-window.__game = game;
+window.__app = app;

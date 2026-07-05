@@ -1,15 +1,23 @@
 import { ECONOMY } from '../config.js';
 
 export class Economy {
-  constructor({ onChange } = {}) {
+  // goldMultiplier / startLives come from the map's difficulty modifiers
+  constructor({ startLives = ECONOMY.startLives, goldMultiplier = 1 } = {}) {
     this.gold = ECONOMY.startGold;
-    this.lives = ECONOMY.startLives;
-    this.onChange = onChange || (() => {});
+    this.lives = startLives;
+    this.startLives = startLives;
+    this.goldMultiplier = goldMultiplier;
   }
 
   addGold(amount) {
     this.gold += amount;
-    this.onChange();
+  }
+
+  // for income (kills, bonuses) that difficulty scales; returns amount granted
+  addIncome(amount) {
+    const scaled = Math.max(1, Math.round(amount * this.goldMultiplier));
+    this.gold += scaled;
+    return scaled;
   }
 
   canAfford(cost) {
@@ -19,19 +27,15 @@ export class Economy {
   spend(cost) {
     if (!this.canAfford(cost)) return false;
     this.gold -= cost;
-    this.onChange();
     return true;
   }
 
   loseLives(count) {
     this.lives = Math.max(0, this.lives - count);
-    this.onChange();
     return this.lives;
   }
 
   waveClearBonus(waveNumber) {
-    const bonus = ECONOMY.waveClearBonusBase + ECONOMY.waveClearBonusPerWave * waveNumber;
-    this.addGold(bonus);
-    return bonus;
+    return this.addIncome(ECONOMY.waveClearBonusBase + ECONOMY.waveClearBonusPerWave * waveNumber);
   }
 }
