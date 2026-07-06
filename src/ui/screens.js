@@ -29,6 +29,18 @@ export class Screens {
       this.show('menu');
     };
 
+    // ---- game mode toggle (campaign / endless) ----
+    this.selectedMode = 'campaign';
+    for (const btn of document.querySelectorAll('#mode-toggle button')) {
+      btn.onclick = () => {
+        audio.play('ui_click');
+        this.selectedMode = btn.dataset.mode;
+        for (const b of document.querySelectorAll('#mode-toggle button')) {
+          b.classList.toggle('active', b === btn);
+        }
+      };
+    }
+
     // ---- map cards ----
     const cardsRoot = document.getElementById('map-cards');
     for (const mapDef of MAPS) {
@@ -95,7 +107,7 @@ export class Screens {
     this._drawMapPreview(card.querySelector('canvas'), mapDef);
     card.onclick = () => {
       this.audio.play('ui_click');
-      onSelectMap(mapDef);
+      onSelectMap(mapDef, this.selectedMode);
     };
     return card;
   }
@@ -178,11 +190,31 @@ export class Screens {
     return !this.pause.classList.contains('hidden');
   }
 
-  showEnd(won, wave, mapDef) {
-    document.getElementById('end-title').textContent = won ? 'Victory!' : 'Game Over';
+  showEnd(won, wave, mapDef, mode = 'campaign', stats = null) {
+    const endless = mode === 'endless';
+    document.getElementById('end-title').textContent = won ? 'Victory!' : endless ? 'Run Over' : 'Game Over';
     document.getElementById('end-text').textContent = won
       ? `You held ${mapDef.name} through all ${wave} waves.`
-      : `${mapDef.name} fell on wave ${wave}.`;
+      : endless
+        ? `Your endless run on ${mapDef.name} ended on wave ${wave}.`
+        : `${mapDef.name} fell on wave ${wave}.`;
+
+    const statsEl = document.getElementById('end-stats');
+    if (stats) {
+      const mins = Math.floor(stats.timeSurvived / 60);
+      const secs = Math.floor(stats.timeSurvived % 60);
+      statsEl.innerHTML = [
+        ['Waves survived', stats.wavesSurvived],
+        ['Enemies killed', stats.kills],
+        ['Gold earned', stats.goldEarned],
+        ['Time survived', `${mins}:${String(secs).padStart(2, '0')}`],
+      ]
+        .map(([k, v]) => `<div class="end-stat"><span>${k}</span><span>${v}</span></div>`)
+        .join('');
+      statsEl.classList.remove('hidden');
+    } else {
+      statsEl.classList.add('hidden');
+    }
     this.end.classList.remove('hidden');
   }
 

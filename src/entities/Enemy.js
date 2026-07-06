@@ -1,22 +1,41 @@
 import * as THREE from 'three';
 import { ENEMIES } from '../config.js';
+import { getModel } from '../systems/ModelLibrary.js';
 
 const _dir = new THREE.Vector3();
 const _perp = new THREE.Vector3();
 
+// Kenney kit UFO per enemy type; tint multiplies the model's palette so
+// reused bodies stay visually distinct. Scale is relative to the raw model.
+const ENEMY_MODELS = {
+  basic: { model: 'enemy-ufo-a', scale: 1.3 },
+  armored: { model: 'enemy-ufo-c', scale: 1.6, tint: 0x5c6470 },
+  swarm: { model: 'enemy-ufo-b', scale: 0.85, tint: 0xe8a33d },
+  hidden: { model: 'enemy-ufo-d', scale: 1.2, tint: 0x8a7ff0 },
+  mage: { model: 'enemy-ufo-d', scale: 1.9, tint: 0x9b59d0 },
+  minion: { model: 'enemy-ufo-b', scale: 0.65, tint: 0xc9a2e8 },
+  boss: { model: 'enemy-ufo-c', scale: 2.8, tint: 0x8c1f1f },
+};
+
 export class Enemy {
   // modifiers: per-map difficulty multipliers { hp, speed }
-  constructor(type, waypoints, hpMultiplier = 1, modifiers = { hp: 1, speed: 1 }) {
+  // opts: { speedMult (endless scaling), at: { position, waypointIndex } (summons) }
+  constructor(type, waypoints, hpMultiplier = 1, modifiers = { hp: 1, speed: 1 }, opts = {}) {
     this.type = type;
     const cfg = ENEMIES[type];
     this.cfg = cfg;
 
     this.maxHp = Math.round(cfg.hp * hpMultiplier * modifiers.hp);
     this.hp = this.maxHp;
-    this.baseSpeed = cfg.speed * modifiers.speed;
+    this.baseSpeed = cfg.speed * modifiers.speed * (opts.speedMult || 1);
     this.reward = cfg.reward;
     this.livesCost = cfg.livesCost;
     this.radius = cfg.size + 0.15; // projectile collision radius
+
+    this.hidden = !!cfg.hidden; // untargetable unless a tower seesHidden
+    this.enraged = false;
+    // summon bookkeeping (EnemyManager performs the actual spawns)
+    this.summonTimer = cfg.summons ? cfg.summons.interval : 0;
 
     this.waypoints = waypoints;
     this.waypointIndex = 0;
@@ -34,58 +53,46 @@ export class Enemy {
     this.deathHandled = false;
 
     this._buildMesh();
-    this.group.position.copy(this._offsetWaypoint(0));
+    if (opts.at) {
+      // summoned mid-path at the summoner's location
+      this.waypointIndex = opts.at.waypointIndex;
+      this.group.position.copy(opts.at.position);
+      this.group.position.y = 0;
+    } else {
+      this.group.position.copy(this._offsetWaypoint(0));
+    }
   }
 
   _buildMesh() {
-    const { color, size } = this.cfg;
+    const { size } = this.cfg;
     this.group = new THREE.Group();
 
-    this.material = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
-    this.baseColor = new THREE.Color(color);
-
-    let bodyGeo;
-    if (this.type === 'armored') {
-      bodyGeo = new THREE.BoxGeometry(size * 1.6, size * 1.6, size * 1.9);
-    } else if (this.type === 'swarm') {
-      bodyGeo = new THREE.SphereGeometry(size, 10, 8);
-    } else {
-      bodyGeo = new THREE.CapsuleGeometry(size * 0.7, size, 4, 8);
-    }
-    this.body = new THREE.Mesh(bodyGeo, this.material);
+    const spec = ENEMY_MODELS[this.type] || ENEMY_MODELS.basic;
+    this._baseScale = spec.scale;
+    this.body = getModel(spec.model) || new THREE.Group();
+    this.body.scale.setScalar(spec.scale);
     this.body.position.y = size + 0.25;
-    this.body.castShadow = true;
     this.group.add(this.body);
 
-    // simple toony face: two dark eyes on the leading side (+z = travel dir)
-    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a22, roughness: 0.4 });
-    const eyeGeo = new THREE.SphereGeometry(size * 0.14, 6, 5);
-    for (const side of [-1, 1]) {
-      const eye = new THREE.Mesh(eyeGeo, eyeMat);
-      eye.position.set(side * size * 0.32, size * 0.25, size * (this.type === 'armored' ? 0.96 : 0.75));
-      this.body.add(eye);
-    }
-
-    if (this.type === 'armored') {
-      // helmet ridge + armor plate
-      const plate = new THREE.Mesh(
-        new THREE.BoxGeometry(size * 1.8, size * 0.4, size * 2.0),
-        new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.4, metalness: 0.5 })
-      );
-      plate.position.y = size * 0.9;
-      this.body.add(plate);
-      const ridge = new THREE.Mesh(
-        new THREE.BoxGeometry(size * 0.3, size * 0.5, size * 1.6),
-        new THREE.MeshStandardMaterial({ color: 0xb8452f, roughness: 0.6 })
-      );
-      ridge.position.y = size * 1.15;
-      this.body.add(ridge);
-    }
+    // clone materials per instance so hit flash / slow tint / hidden shimmer
+    // can't leak across enemies sharing the cached model
+    this.materials = [];
+    const tint = spec.tint ? new THREE.Color(spec.tint) : null;
+    this.body.traverse((obj) => {
+      if (!obj.isMesh) return;
+      obj.material = obj.material.clone();
+      if (tint) obj.material.color.lerp(tint, 0.45);
+      if (this.hidden) {
+        obj.material.transparent = true;
+        obj.material.opacity = 0.35;
+      }
+      this.materials.push({ mat: obj.material, baseColor: obj.material.color.clone() });
+    });
 
     // HP bar (billboarded toward camera by update)
     this.hpBar = new THREE.Group();
-    const barW = 1.0;
-    const bg = new THREE.Mesh(
+    const barW = this.cfg.boss ? 1.8 : 1.0;
+    this.hpBarBg = new THREE.Mesh(
       new THREE.PlaneGeometry(barW, 0.12),
       new THREE.MeshBasicMaterial({ color: 0x30121a, depthTest: false })
     );
@@ -94,7 +101,7 @@ export class Enemy {
       new THREE.MeshBasicMaterial({ color: 0x58d858, depthTest: false })
     );
     this.hpFill.position.z = 0.001;
-    this.hpBar.add(bg);
+    this.hpBar.add(this.hpBarBg);
     this.hpBar.add(this.hpFill);
     this.hpBar.position.y = this.cfg.size * 2 + 0.8;
     this.hpBar.renderOrder = 999;
@@ -121,6 +128,7 @@ export class Enemy {
     for (const fx of this.statusEffects) {
       if (fx.speedMult != null) mult = Math.min(mult, fx.speedMult);
     }
+    if (this.enraged) mult *= this.cfg.enrage.speedMult;
     return this.baseSpeed * mult;
   }
 
@@ -135,7 +143,8 @@ export class Enemy {
       // death squash: flatten & widen, then the manager removes us
       this.deathAnim += dt;
       const k = Math.min(this.deathAnim / 0.18, 1);
-      this.body.scale.set(1 + k * 0.6, Math.max(1 - k, 0.05), 1 + k * 0.6);
+      const s = this._baseScale;
+      this.body.scale.set(s * (1 + k * 0.6), Math.max(s * (1 - k), 0.02), s * (1 + k * 0.6));
       this.hpBar.visible = false;
       return;
     }
@@ -172,17 +181,23 @@ export class Enemy {
       this.reachedEnd = true;
     }
 
-    // bob for a bit of life
+    // hover bob for a bit of life (UFOs float)
     this.body.position.y = this.cfg.size + 0.25 + Math.sin(performance.now() * 0.008 + this.lateralOffset * 10) * 0.06;
+
+    // hidden shimmer: opacity pulse marks "here but untargetable"
+    if (this.hidden) {
+      const opacity = 0.28 + 0.14 * (0.5 + 0.5 * Math.sin(performance.now() * 0.004 + this.lateralOffset * 6));
+      for (const { mat } of this.materials) mat.opacity = opacity;
+    }
 
     if (this.hitFlash > 0) {
       this.hitFlash -= dt * 6;
-      if (this.hitFlash <= 0) {
-        this.hitFlash = 0;
-        this.material.emissive.setHex(0x000000);
-      } else {
-        this.material.emissive.setHex(0xffffff);
-        this.material.emissiveIntensity = this.hitFlash * 0.5;
+      const intensity = this.hitFlash > 0 ? this.hitFlash * 0.5 : 0;
+      const hex = this.hitFlash > 0 ? 0xffffff : 0x000000;
+      if (this.hitFlash <= 0) this.hitFlash = 0;
+      for (const { mat } of this.materials) {
+        mat.emissive.setHex(hex);
+        mat.emissiveIntensity = intensity;
       }
     }
 
@@ -200,6 +215,9 @@ export class Enemy {
     this.hitFlash = 1;
     if (this.hp <= 0) {
       this.alive = false;
+    } else if (this.cfg.enrage && !this.enraged && this.hp / this.maxHp <= this.cfg.enrage.hpThreshold) {
+      this.enraged = true;
+      this._refreshTint();
     }
     return dealt;
   }
@@ -225,17 +243,24 @@ export class Enemy {
 
   _refreshTint() {
     const slowed = this.statusEffects.some((fx) => fx.speedMult != null && fx.speedMult < 1);
-    if (slowed) {
-      this.material.color.copy(this.baseColor).lerp(new THREE.Color(0x66ccff), 0.55);
-    } else {
-      this.material.color.copy(this.baseColor);
+    for (const { mat, baseColor } of this.materials) {
+      if (slowed) {
+        mat.color.copy(baseColor).lerp(new THREE.Color(0x66ccff), 0.55);
+      } else if (this.enraged) {
+        mat.color.copy(baseColor).lerp(new THREE.Color(0xff5020), 0.6);
+      } else {
+        mat.color.copy(baseColor);
+      }
     }
   }
 
   dispose() {
-    this.group.traverse((obj) => {
-      if (obj.geometry) obj.geometry.dispose();
-      if (obj.material) obj.material.dispose();
-    });
+    // model geometry is shared with the ModelLibrary cache — only dispose
+    // per-instance resources (cloned materials + the HP bar)
+    for (const { mat } of this.materials) mat.dispose();
+    this.hpBarBg.geometry.dispose();
+    this.hpBarBg.material.dispose();
+    this.hpFill.geometry.dispose();
+    this.hpFill.material.dispose();
   }
 }

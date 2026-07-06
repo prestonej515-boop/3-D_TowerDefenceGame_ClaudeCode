@@ -7,6 +7,8 @@ import { createGroundTexture, createPathTexture, createSoftCircleTexture } from 
 // grid <-> world helpers plus buildability checks. Call update(dt) each frame
 // for ambient animation (portal swirl, tree sway, cloud drift, flag wobble).
 export class MapBuilder {
+  static PLATFORM_HEIGHT = 1.1; // world-space height of elevated sniper zones
+
   constructor(scene, mapDef) {
     this.scene = scene;
     this.mapDef = mapDef;
@@ -18,6 +20,7 @@ export class MapBuilder {
     this.pathCells = new Set(); // "col,row" strings
     this.blockedCells = new Set(); // decorations
     this.occupiedCells = new Set(); // towers
+    this.elevatedCells = new Set((mapDef.elevatedZones || []).map(([c, r]) => `${c},${r}`));
 
     this.time = 0;
     this.trees = []; // { group, phase } for sway animation
@@ -29,6 +32,7 @@ export class MapBuilder {
     this._buildGround();
     this._buildPath();
     this._buildMarkers();
+    this._buildElevatedZones();
     this._scatterDecorations();
     this._buildClouds();
   }
@@ -58,8 +62,27 @@ export class MapBuilder {
       this.inBounds(col, row) &&
       !this.pathCells.has(key) &&
       !this.blockedCells.has(key) &&
-      !this.occupiedCells.has(key)
+      !this.occupiedCells.has(key) &&
+      !this.elevatedCells.has(key)
     );
+  }
+
+  isElevated(col, row) {
+    return this.elevatedCells.has(`${col},${row}`);
+  }
+
+  // Placement rule per tower kind: elevated-only towers go exclusively on
+  // elevated platforms; everything else uses normal ground rules.
+  canPlaceType(col, row, towerCfg) {
+    if (towerCfg && towerCfg.elevatedOnly) {
+      return this.isElevated(col, row) && !this.occupiedCells.has(`${col},${row}`);
+    }
+    return this.isBuildable(col, row);
+  }
+
+  // World-space y a tower base should sit at for this cell.
+  placementHeight(col, row) {
+    return this.isElevated(col, row) ? MapBuilder.PLATFORM_HEIGHT : 0;
   }
 
   occupy(col, row) {
@@ -237,6 +260,42 @@ export class MapBuilder {
     base.position.set(end.x, 0, end.z);
     this.scene.add(base);
     this.baseGroup = base;
+  }
+
+  // Raised stone platforms that only sniper towers can build on.
+  _buildElevatedZones() {
+    const h = MapBuilder.PLATFORM_HEIGHT;
+    const stone = new THREE.MeshStandardMaterial({ color: 0x99a3b0, roughness: 0.85 });
+    const trim = new THREE.MeshStandardMaterial({ color: 0x6e7885, roughness: 0.9 });
+    const s = this.tileSize;
+
+    for (const key of this.elevatedCells) {
+      const [c, r] = key.split(',').map(Number);
+      const pos = this.gridToWorld(c, r);
+      const group = new THREE.Group();
+
+      const body = new THREE.Mesh(new THREE.BoxGeometry(s * 0.92, h, s * 0.92), stone);
+      body.position.y = h / 2;
+      body.castShadow = true;
+      body.receiveShadow = true;
+      group.add(body);
+
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(s * 1.0, 0.12, s * 1.0), trim);
+      cap.position.y = h + 0.06;
+      cap.receiveShadow = true;
+      group.add(cap);
+
+      // corner posts so the platform reads as a built structure
+      for (const [dx, dz] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.3, 0.16), trim);
+        post.position.set(dx * s * 0.42, h + 0.25, dz * s * 0.42);
+        post.castShadow = true;
+        group.add(post);
+      }
+
+      group.position.set(pos.x, 0, pos.z);
+      this.scene.add(group);
+    }
   }
 
   _scatterDecorations() {

@@ -24,6 +24,8 @@ export const MAPS = [
       [16, 9],
     ],
     decorationCount: 14,
+    // grid cells with raised platforms; only sniper towers may build here
+    elevatedZones: [[6, 4], [10, 4], [1, 7], [7, 7], [14, 7]],
     modifiers: { hp: 1.0, speed: 1.0, gold: 1.0, startLives: 25 },
   },
   {
@@ -48,6 +50,7 @@ export const MAPS = [
       [16, 10],
     ],
     decorationCount: 18,
+    elevatedZones: [[3, 3], [7, 2], [12, 3], [11, 6], [6, 8]],
     modifiers: { hp: 1.25, speed: 1.1, gold: 0.9, startLives: 20 },
   },
   {
@@ -70,6 +73,7 @@ export const MAPS = [
       [16, 5],
     ],
     decorationCount: 26,
+    elevatedZones: [[2, 4], [6, 5], [11, 6], [14, 3]],
     modifiers: { hp: 1.6, speed: 1.2, gold: 0.85, startLives: 15 },
   },
 ];

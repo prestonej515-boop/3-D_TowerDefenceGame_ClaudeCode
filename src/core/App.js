@@ -3,6 +3,7 @@ import { MAPS, THEMES } from '../config/maps.js';
 import { Settings } from '../systems/Settings.js';
 import { AudioManager } from '../systems/AudioManager.js';
 import { Screens } from '../ui/screens.js';
+import { preloadModels } from '../systems/ModelLibrary.js';
 import { createSceneContext } from '../scene/sceneSetup.js';
 import { MapBuilder } from '../scene/MapBuilder.js';
 import { Game } from './Game.js';
@@ -45,10 +46,11 @@ export class App {
     this.game = null;
     this.currentMapDef = null;
 
+    this.currentMode = 'campaign';
     this.screens = new Screens({
       settings: this.settings,
       audio: this.audio,
-      onSelectMap: (mapDef) => this.startGame(mapDef),
+      onSelectMap: (mapDef, mode) => this.startGame(mapDef, mode),
       onResume: () => this.resumeGame(),
       onQuitToMenu: () => this.quitToMenu(),
       onRetry: () => this.retry(),
@@ -65,11 +67,17 @@ export class App {
     document.addEventListener('pointerdown', unlockAudio);
     document.addEventListener('keydown', unlockAudio);
 
+    // kick off tower-model loading while the player sits in the menu
+    this.modelsLoaded = preloadModels().catch((err) => {
+      console.error('Tower models failed to load:', err);
+    });
+
     this.menuBg = new MenuBackground(container, this.settings);
     this.screens.show('menu');
   }
 
-  startGame(mapDef) {
+  async startGame(mapDef, mode = 'campaign') {
+    await this.modelsLoaded; // ~instant unless the menu was skipped fast
     if (this.menuBg) {
       this.menuBg.dispose();
       this.menuBg = null;
@@ -79,6 +87,7 @@ export class App {
       this.game = null;
     }
     this.currentMapDef = mapDef;
+    this.currentMode = mode;
     this.screens.hideEnd();
     this.screens.show('game');
     this.audio.setMood('calm');
@@ -86,13 +95,19 @@ export class App {
     this.game = new Game(this.container, mapDef, {
       settings: this.settings,
       audio: this.audio,
+      mode,
       onPauseRequest: () => this.pauseGame(),
-      onGameEnd: (won, wave) => this.screens.showEnd(won, wave, mapDef),
+      onGameEnd: (won, wave, stats) => this.screens.showEnd(won, wave, mapDef, mode, stats),
     });
   }
 
   pauseGame() {
     if (!this.game || this.game.state !== 'playing') return;
+    if (this.screens.settingsOpen) {
+      // settings stacks above pause — Esc should peel it off, not resume
+      this.screens.closeSettings();
+      return;
+    }
     if (this.screens.pauseOpen) {
       this.resumeGame();
       return;
@@ -107,7 +122,7 @@ export class App {
   }
 
   retry() {
-    this.startGame(this.currentMapDef);
+    this.startGame(this.currentMapDef, this.currentMode);
   }
 
   quitToMenu() {

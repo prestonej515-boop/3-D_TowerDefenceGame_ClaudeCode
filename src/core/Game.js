@@ -11,18 +11,31 @@ import { UI } from '../ui/UI.js';
 import { TOWERS } from '../config.js';
 import { THEMES } from '../config/maps.js';
 
-const SHOT_SFX = { single: 'shoot_single', splash: 'shoot_splash', slow: 'shoot_slow' };
-const TOWER_HOTKEYS = { 1: 'single', 2: 'splash', 3: 'slow' };
+const SHOT_SFX = {
+  single: 'shoot_single',
+  splash: 'shoot_splash',
+  slow: 'shoot_slow',
+  sniper: 'shoot_single',
+  mortar: 'shoot_splash',
+};
+const TOWER_HOTKEYS = { 1: 'single', 2: 'splash', 3: 'slow', 4: 'sniper', 5: 'mortar' };
 
 // One playthrough of one map. Created by App per run; dispose() tears the
 // whole scene down so the player can return to the menu without a reload.
+// mode: 'campaign' (authored waves, win at the end) | 'endless' (generated
+// waves that scale until the player falls).
 export class Game {
-  constructor(container, mapDef, { settings, audio, onPauseRequest, onGameEnd }) {
+  constructor(container, mapDef, { settings, audio, mode = 'campaign', onPauseRequest, onGameEnd }) {
     this.mapDef = mapDef;
+    this.mode = mode;
     this.settings = settings;
     this.audio = audio;
     this.onPauseRequest = onPauseRequest || (() => {});
     this.onGameEnd = onGameEnd || (() => {});
+
+    // post-run stats
+    this.killCount = 0;
+    this.timeSurvived = 0; // real (unscaled) seconds while playing
 
     const theme = THEMES[mapDef.theme];
     const ctx = createSceneContext(container, theme, settings);
@@ -57,10 +70,14 @@ export class Game {
     this.enemyManager = new EnemyManager(this.scene, this.map.worldWaypoints, {
       modifiers: { hp: mods.hp, speed: mods.speed },
       onKill: (enemy) => {
+        this.killCount++;
         const earned = this.economy.addIncome(enemy.reward);
         this.effects.deathBurst(enemy.position, enemy.cfg.color);
         this.effects.goldPopup(enemy.position, earned);
         this.audio.play('death');
+      },
+      onSummon: (summoner) => {
+        this.effects.impactPuff(summoner.position, 0xb060e8, 1.0);
       },
       onLeak: (enemy) => {
         const remaining = this.economy.loseLives(enemy.livesCost);
@@ -89,6 +106,7 @@ export class Game {
     });
 
     this.waveManager = new WaveManager(this.enemyManager, {
+      endless: mode === 'endless',
       onWaveClear: (wave) => {
         if (this.state !== 'playing') return;
         const bonus = this.economy.waveClearBonus(wave);
@@ -119,7 +137,12 @@ export class Game {
     this.deselectTower();
     this.audio.play(won ? 'win' : 'lose');
     this.audio.setMood('calm');
-    this.onGameEnd(won, this.waveManager.currentWave);
+    this.onGameEnd(won, this.waveManager.currentWave, {
+      wavesSurvived: won ? this.waveManager.currentWave : Math.max(this.waveManager.currentWave - 1, 0),
+      kills: this.killCount,
+      goldEarned: this.economy.totalEarned,
+      timeSurvived: this.timeSurvived,
+    });
   }
 
   // ---- placement ghost -------------------------------------------------------
@@ -251,10 +274,11 @@ export class Game {
       return;
     }
     const pos = this.map.gridToWorld(col, row);
-    this.ghost.position.set(pos.x, 0, pos.z);
+    // ghost sits on the platform surface when hovering an elevated zone
+    this.ghost.position.set(pos.x, this.map.placementHeight(col, row), pos.z);
     this.ghost.visible = true;
 
-    const valid = this.map.isBuildable(col, row);
+    const valid = this.map.canPlaceType(col, row, TOWERS[this.placementType]);
     const color = valid ? 0x4fd15f : 0xd14f4f;
     this.ghostBody.material.color.setHex(valid ? TOWERS[this.placementType].color : color);
     this.ghostTile.material.color.setHex(color);
@@ -365,6 +389,7 @@ export class Game {
     const dt = this.paused ? 0 : rawDt * this.speedMultiplier;
 
     if (this.state === 'playing' && !this.paused) {
+      this.timeSurvived += rawDt;
       this.waveManager.update(dt);
       this.enemyManager.update(dt, this.camera);
       this.towerManager.update(dt, this.enemyManager.enemies);

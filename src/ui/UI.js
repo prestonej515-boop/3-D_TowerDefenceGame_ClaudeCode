@@ -1,4 +1,4 @@
-import { TOWERS, WAVES, ENEMIES } from '../config.js';
+import { TOWERS, ENEMIES } from '../config.js';
 import { TARGETING_MODES } from '../entities/Tower.js';
 
 const TARGETING_LABELS = { nearest: 'Near', first: 'First', strongest: 'Strong' };
@@ -56,6 +56,14 @@ export class UI {
       let tooltip = `Damage: ${lv1.damage}\nFire rate: ${lv1.fireRate}/s\nRange: ${lv1.range}\nDPS: ${(lv1.damage * lv1.fireRate).toFixed(0)}`;
       if (lv1.splashRadius) tooltip += `\nSplash radius: ${lv1.splashRadius}`;
       if (lv1.slowFactor) tooltip += `\nSlow: ${Math.round((1 - lv1.slowFactor) * 100)}% for ${lv1.slowDuration}s`;
+      if (lv1.minRange) tooltip += `\nMin range: ${lv1.minRange} (can't hit closer)`;
+      if (cfg.elevatedOnly) tooltip += `\n⛰ Elevated platforms only`;
+      if (cfg.neverSeesHidden) tooltip += `\n✕ Never sees Hidden enemies`;
+      else if (lv1.seesHidden) tooltip += `\n👁 Sees Hidden enemies`;
+      else {
+        const tier = cfg.levels.findIndex((l) => l.seesHidden);
+        if (tier > 0) tooltip += `\n👁 Sees Hidden at tier ${tier + 1}`;
+      }
       btn.innerHTML = `
         <span class="t-key">${hotkey}</span>
         <div class="t-name">${cfg.name}</div>
@@ -91,7 +99,9 @@ export class UI {
       this._lastGold = economy.gold;
       this.goldEl.textContent = economy.gold;
     }
-    const waveText = `${waveManager.currentWave} / ${waveManager.totalWaves}`;
+    const waveText = waveManager.endless
+      ? `${waveManager.currentWave} / ∞`
+      : `${waveManager.currentWave} / ${waveManager.totalWaves}`;
     if (waveText !== this._lastWave) {
       this._lastWave = waveText;
       this.waveEl.textContent = waveText;
@@ -143,11 +153,13 @@ export class UI {
       return;
     }
     const nextIndex = currentWave; // currentWave is 1-based; next wave config index
-    if (this._lastWavePreviewFor === nextIndex || nextIndex >= WAVES.length) return;
+    if (this._lastWavePreviewFor === nextIndex) return;
+    const groups = this.game.waveManager.getNextWaveGroups();
+    if (!groups) return;
     this._lastWavePreviewFor = nextIndex;
 
     const counts = {};
-    for (const group of WAVES[nextIndex]) {
+    for (const group of groups) {
       counts[group.type] = (counts[group.type] || 0) + group.count;
     }
     this.wavePreviewItems.innerHTML = Object.entries(counts)
@@ -184,6 +196,8 @@ export class UI {
     ];
     if (s.splashRadius) rows.push(['Splash radius', s.splashRadius]);
     if (s.slowFactor) rows.push(['Slow', `${Math.round((1 - s.slowFactor) * 100)}% / ${s.slowDuration}s`]);
+    if (s.minRange) rows.push(['Min range', s.minRange]);
+    rows.push(['Sees Hidden', tower.cfg.neverSeesHidden ? 'Never' : tower.canSeeHidden ? 'Yes' : 'No']);
     this.statsTable.innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
 
     this._renderLiveStats(tower);
@@ -218,6 +232,9 @@ export class UI {
         previewRows.push(
           `<div>${label}: ${fmt(cur)} → <span class="up-new">${fmt(nxt)}</span> <span class="up-delta">(${delta > 0 ? '+' : ''}${fmt(Math.round(delta * 100) / 100)})</span></div>`
         );
+      }
+      if (next.seesHidden && !tower.canSeeHidden && !tower.cfg.neverSeesHidden) {
+        previewRows.push(`<div>Detection: <span class="up-new">Sees Hidden enemies</span></div>`);
       }
       this.upgradePreviewRows.innerHTML = previewRows.join('');
       this.upgradePreview.classList.remove('hidden');

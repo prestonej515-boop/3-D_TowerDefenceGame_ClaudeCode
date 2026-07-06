@@ -7,6 +7,7 @@ export class Economy {
     this.lives = startLives;
     this.startLives = startLives;
     this.goldMultiplier = goldMultiplier;
+    this.totalEarned = 0; // lifetime income (kills + bonuses), for the stats screen
   }
 
   addGold(amount) {
@@ -17,6 +18,7 @@ export class Economy {
   addIncome(amount) {
     const scaled = Math.max(1, Math.round(amount * this.goldMultiplier));
     this.gold += scaled;
+    this.totalEarned += scaled;
     return scaled;
   }
 
