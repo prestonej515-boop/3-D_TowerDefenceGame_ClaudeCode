@@ -1,6 +1,38 @@
 import * as THREE from 'three';
 import { THEMES } from '../config/maps.js';
+import { getModel } from '../systems/ModelLibrary.js';
 import { createGroundTexture, createPathTexture, createSoftCircleTexture } from './textures.js';
+
+// Kit path-tile classification: which of the 4 neighbors continue the path
+// determines the tile model and its Y rotation. Base orientations assumed:
+// straight runs N-S, corner connects S+E, end opens S, split misses N.
+// (rotation.y = +PI/2 maps a S connection to E)
+function classifyTile({ n, s, e, w }) {
+  const count = n + s + e + w;
+  if (count === 4) return { name: 'tile-crossing', rot: 0 };
+  if (count === 3) {
+    if (!n) return { name: 'tile-split', rot: 0 };
+    if (!w) return { name: 'tile-split', rot: Math.PI / 2 };
+    if (!s) return { name: 'tile-split', rot: Math.PI };
+    return { name: 'tile-split', rot: -Math.PI / 2 };
+  }
+  if (count === 2 && ((n && s) || (e && w))) {
+    return { name: 'tile-straight', rot: n && s ? 0 : Math.PI / 2 };
+  }
+  if (count === 2) {
+    if (s && e) return { name: 'tile-corner-square', rot: 0 };
+    if (n && e) return { name: 'tile-corner-square', rot: Math.PI / 2 };
+    if (n && w) return { name: 'tile-corner-square', rot: Math.PI };
+    return { name: 'tile-corner-square', rot: -Math.PI / 2 };
+  }
+  if (count === 1) {
+    if (s) return { name: 'tile-end-round', rot: 0 };
+    if (e) return { name: 'tile-end-round', rot: Math.PI / 2 };
+    if (n) return { name: 'tile-end-round', rot: Math.PI };
+    return { name: 'tile-end-round', rot: -Math.PI / 2 };
+  }
+  return { name: 'tile-straight', rot: 0 };
+}
 
 // Builds one map from a map definition: ground, blended path, base/spawn
 // markers, themed decorations, ambient environment (clouds), and exposes
@@ -94,6 +126,9 @@ export class MapBuilder {
   }
 
   _computePathCells() {
+    // allPathCells keeps off-grid entry/exit cells too, so edge tiles know
+    // the path continues past the rim and orient correctly
+    this.allPathCells = new Set();
     const wp = this.mapDef.waypoints;
     for (let i = 0; i < wp.length - 1; i++) {
       let [c0, r0] = wp[i];
@@ -101,10 +136,12 @@ export class MapBuilder {
       const dc = Math.sign(c1 - c0);
       const dr = Math.sign(r1 - r0);
       while (c0 !== c1 || r0 !== r1) {
+        this.allPathCells.add(`${c0},${r0}`);
         if (this.inBounds(c0, r0)) this.pathCells.add(`${c0},${r0}`);
         c0 += dc;
         r0 += dr;
       }
+      this.allPathCells.add(`${c1},${r1}`);
       if (this.inBounds(c1, r1)) this.pathCells.add(`${c1},${r1}`);
     }
   }
@@ -148,6 +185,11 @@ export class MapBuilder {
   }
 
   _buildPath() {
+    // grass/snow themes use kit tile models; desert (no kit set) and any
+    // not-yet-loaded-models case fall back to the procedural textured path
+    const prefix = this.mapDef.theme === 'grass' ? '' : this.mapDef.theme === 'snow' ? 'snow-' : null;
+    if (prefix !== null && this._buildTilePath(prefix)) return;
+
     const pathTex = createPathTexture(this.theme);
 
     // alpha map fading at the tile rim so overlapping tiles blend softly
@@ -262,6 +304,30 @@ export class MapBuilder {
     this.baseGroup = base;
   }
 
+  // Kit tile models along the path. Returns false when models aren't loaded
+  // so the caller can fall back to the procedural path.
+  _buildTilePath(prefix) {
+    if (!getModel(`${prefix}tile-straight`)) return false;
+    for (const key of this.pathCells) {
+      const [c, r] = key.split(',').map(Number);
+      const conn = {
+        n: this.allPathCells.has(`${c},${r - 1}`),
+        s: this.allPathCells.has(`${c},${r + 1}`),
+        e: this.allPathCells.has(`${c + 1},${r}`),
+        w: this.allPathCells.has(`${c - 1},${r}`),
+      };
+      const { name, rot } = classifyTile(conn);
+      const tile = getModel(prefix + name);
+      if (!tile) continue;
+      tile.scale.setScalar(this.tileSize); // kit tiles are 1 unit square
+      const pos = this.gridToWorld(c, r);
+      tile.position.set(pos.x, 0.01, pos.z);
+      tile.rotation.y = rot;
+      this.scene.add(tile);
+    }
+    return true;
+  }
+
   // Raised stone platforms that only sniper towers can build on.
   _buildElevatedZones() {
     const h = MapBuilder.PLATFORM_HEIGHT;
@@ -318,17 +384,31 @@ export class MapBuilder {
 
       this.blockedCells.add(`${col},${row}`);
       const pos = this.gridToWorld(col, row);
-      const deco = theme === 'desert' && Math.random() < 0.45
-        ? this._makeRock(0xb08d62)
-        : theme === 'desert'
-          ? this._makeCactus()
-          : theme === 'snow' && Math.random() < 0.3
-            ? this._makeRock(0x9fb2c4)
-            : this._makeTree(theme === 'snow');
+
+      // grass/snow prefer kit detail models (static, no sway); desert and the
+      // models-not-loaded case keep the procedural props
+      let deco = null;
+      let kitScale = 1;
+      if (theme === 'grass' || theme === 'snow') {
+        const pool = theme === 'snow'
+          ? ['snow-detail-tree', 'snow-detail-tree', 'snow-detail-tree-large', 'snow-detail-rocks', 'snow-detail-crystal']
+          : ['detail-tree', 'detail-tree', 'detail-tree-large', 'detail-rocks', 'detail-rocks-large'];
+        deco = getModel(pool[Math.floor(Math.random() * pool.length)]);
+        kitScale = 1.4;
+      }
+      if (!deco) {
+        deco = theme === 'desert' && Math.random() < 0.45
+          ? this._makeRock(0xb08d62)
+          : theme === 'desert'
+            ? this._makeCactus()
+            : theme === 'snow' && Math.random() < 0.3
+              ? this._makeRock(0x9fb2c4)
+              : this._makeTree(theme === 'snow');
+      }
 
       deco.position.set(pos.x + (Math.random() - 0.5) * 0.4, 0, pos.z + (Math.random() - 0.5) * 0.4);
       deco.rotation.y = Math.random() * Math.PI * 2;
-      deco.scale.setScalar(0.8 + Math.random() * 0.5);
+      deco.scale.setScalar((0.8 + Math.random() * 0.5) * kitScale);
       this.scene.add(deco);
       placed++;
     }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MAPS, THEMES } from '../config/maps.js';
 import { Settings } from '../systems/Settings.js';
+import { Records } from '../systems/Records.js';
 import { AudioManager } from '../systems/AudioManager.js';
 import { Screens } from '../ui/screens.js';
 import { preloadModels } from '../systems/ModelLibrary.js';
@@ -47,9 +48,11 @@ export class App {
     this.currentMapDef = null;
 
     this.currentMode = 'campaign';
+    this.records = new Records();
     this.screens = new Screens({
       settings: this.settings,
       audio: this.audio,
+      records: this.records,
       onSelectMap: (mapDef, mode) => this.startGame(mapDef, mode),
       onResume: () => this.resumeGame(),
       onQuitToMenu: () => this.quitToMenu(),
@@ -72,7 +75,13 @@ export class App {
       console.error('Tower models failed to load:', err);
     });
 
-    this.menuBg = new MenuBackground(container, this.settings);
+    // build the menu backdrop once tile/decoration models are in, so it gets
+    // the same kit visuals as real games (MapBuilder falls back gracefully
+    // regardless)
+    this.menuBg = null;
+    this.modelsLoaded.then(() => {
+      if (!this.game && !this.menuBg) this.menuBg = new MenuBackground(container, this.settings);
+    });
     this.screens.show('menu');
   }
 
@@ -97,7 +106,10 @@ export class App {
       audio: this.audio,
       mode,
       onPauseRequest: () => this.pauseGame(),
-      onGameEnd: (won, wave, stats) => this.screens.showEnd(won, wave, mapDef, mode, stats),
+      onGameEnd: (won, wave, stats) => {
+        this.records.report(mapDef.id, mode, wave, won);
+        this.screens.showEnd(won, wave, mapDef, mode, stats);
+      },
     });
   }
 

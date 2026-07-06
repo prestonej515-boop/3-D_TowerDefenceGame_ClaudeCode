@@ -140,6 +140,19 @@ button {
   color: #0c2a14;
 }
 
+#mode-toggle button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.map-card .mc-record {
+  font-size: 12px;
+  color: #ffe98a;
+  margin-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 6px;
+}
+
 /* ---- end-screen stats ---- */
 
 #end-stats {
@@ -692,6 +705,12 @@ button {
   font-size: 14px;
   font-weight: 600;
   animation: toast-in 0.25s ease-out, toast-out 0.4s ease-in 2.1s forwards;
+}
+
+.toast.danger {
+  background: rgba(46, 16, 16, 0.94);
+  border-color: rgba(224, 106, 106, 0.7);
+  color: #ffb9c0;
 }
 
 @keyframes toast-in {

@@ -8,6 +8,7 @@ const DEFAULTS = {
   sfxVolume: 0.8,
   shadowQuality: 'high', // 'off' | 'medium' | 'high'
   screenShake: true,
+  autoStartWave: false, // auto-launch the next wave after a short countdown
 };
 
 export class Settings {

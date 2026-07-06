@@ -36,6 +36,30 @@ const MODEL_NAMES = [
   'enemy-ufo-b',
   'enemy-ufo-c',
   'enemy-ufo-d',
+  // projectiles
+  'weapon-ammo-bullet',
+  'weapon-ammo-cannonball',
+  'weapon-ammo-boulder',
+  'weapon-ammo-arrow',
+  // map path tiles + decorations (grass and snow themes; desert stays procedural)
+  'tile-straight',
+  'tile-corner-square',
+  'tile-end-round',
+  'tile-crossing',
+  'tile-split',
+  'detail-tree',
+  'detail-tree-large',
+  'detail-rocks',
+  'detail-rocks-large',
+  'snow-tile-straight',
+  'snow-tile-corner-square',
+  'snow-tile-end-round',
+  'snow-tile-crossing',
+  'snow-tile-split',
+  'snow-detail-tree',
+  'snow-detail-tree-large',
+  'snow-detail-rocks',
+  'snow-detail-crystal',
 ];
 
 let readyPromise = null;

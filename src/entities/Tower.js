@@ -15,11 +15,13 @@ const ASSEMBLY = {
   single: {
     parts: ['tower-square-bottom-b', 'tower-square-middle-b', 'tower-square-top-b'],
     weapon: 'weapon-turret',
+    ammo: 'weapon-ammo-bullet',
     scale: 2.0,
   },
   splash: {
     parts: ['tower-round-bottom-b', 'tower-round-middle-b', 'tower-round-top-b'],
     weapon: 'weapon-cannon',
+    ammo: 'weapon-ammo-cannonball',
     scale: 2.0,
   },
   slow: {
@@ -33,11 +35,13 @@ const ASSEMBLY = {
     parts: ['wood-structure', 'wood-structure-high'],
     swapParts: true,
     weapon: 'weapon-ballista',
+    ammo: 'weapon-ammo-arrow',
     scale: 1.7,
   },
   mortar: {
     parts: ['tower-round-base'],
     weapon: 'weapon-catapult',
+    ammo: 'weapon-ammo-boulder',
     scale: 2.0,
   },
 };
@@ -306,6 +310,7 @@ export class Tower {
         slowFactor: s.slowFactor || null,
         slowDuration: s.slowDuration || 0,
         arc: !!this.cfg.arc,
+        ammo: ASSEMBLY[this.type].ammo || null,
       };
     }
     return null;

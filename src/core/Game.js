@@ -19,6 +19,7 @@ const SHOT_SFX = {
   mortar: 'shoot_splash',
 };
 const TOWER_HOTKEYS = { 1: 'single', 2: 'splash', 3: 'slow', 4: 'sniper', 5: 'mortar' };
+const AUTO_START_DELAY = 3; // seconds between waves with auto-start enabled
 
 // One playthrough of one map. Created by App per run; dispose() tears the
 // whole scene down so the player can return to the menu without a reload.
@@ -61,6 +62,7 @@ export class Game {
     this.speedMultiplier = 1;
     this.placementType = null;
     this.selectedTower = null;
+    this.autoStartTimer = 0; // counts up to AUTO_START_DELAY between waves
 
     const mods = mapDef.modifiers;
     this.map = new MapBuilder(this.scene, mapDef);
@@ -241,6 +243,10 @@ export class Game {
         }
       } else if (TOWER_HOTKEYS[e.key] && !this.paused) {
         this.togglePlacement(TOWER_HOTKEYS[e.key]);
+      } else if ((e.key === 'u' || e.key === 'U') && !this.paused && this.selectedTower) {
+        this.upgradeSelected();
+      } else if ((e.key === 's' || e.key === 'S') && !this.paused && this.selectedTower) {
+        this.sellSelected();
       } else if (e.key === ' ' && !this.paused) {
         e.preventDefault();
         if (this.waveManager.canStartWave) this.startWave();
@@ -361,7 +367,12 @@ export class Game {
 
   startWave() {
     if (this.state !== 'playing' || this.paused) return;
+    const groups = this.waveManager.getNextWaveGroups();
     if (this.waveManager.startNextWave()) {
+      this.autoStartTimer = 0;
+      if (groups && groups.some((g) => g.type === 'boss')) {
+        this.ui.toast('⚠ Boss incoming!', 'danger');
+      }
       this.audio.play('wave_start');
       this.audio.setMood('tense');
     }
@@ -393,6 +404,19 @@ export class Game {
       this.waveManager.update(dt);
       this.enemyManager.update(dt, this.camera);
       this.towerManager.update(dt, this.enemyManager.enemies);
+
+      // auto-start countdown between waves (only after the player has
+      // manually launched the first wave)
+      if (
+        this.settings.get('autoStartWave') &&
+        this.waveManager.canStartWave &&
+        this.waveManager.currentWave > 0
+      ) {
+        this.autoStartTimer += rawDt;
+        if (this.autoStartTimer >= AUTO_START_DELAY) this.startWave();
+      } else {
+        this.autoStartTimer = 0;
+      }
     }
     if (!this.paused) {
       this.effects.update(dt);
