@@ -3,6 +3,7 @@ import { MAPS, THEMES } from '../config/maps.js';
 import { Settings } from '../systems/Settings.js';
 import { Records } from '../systems/Records.js';
 import { AudioManager } from '../systems/AudioManager.js';
+import { loadMidi } from '../systems/MidiSong.js';
 import { Screens } from '../ui/screens.js';
 import { preloadModels } from '../systems/ModelLibrary.js';
 import { createSceneContext } from '../scene/sceneSetup.js';
@@ -44,6 +45,10 @@ export class App {
     this.container = container;
     this.settings = new Settings();
     this.audio = new AudioManager(this.settings);
+    // custom wave-time track; generative music stays the fallback if it fails
+    loadMidi('/audio/pixel_pursuit_quiet_pulse.mid')
+      .then((song) => this.audio.setTenseSong(song))
+      .catch((err) => console.warn('Tense MIDI failed to load, using generative music:', err));
     this.game = null;
     this.currentMapDef = null;
 
