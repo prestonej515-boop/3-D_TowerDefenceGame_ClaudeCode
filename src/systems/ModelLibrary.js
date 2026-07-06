@@ -68,7 +68,7 @@ export function preloadModels() {
   if (!readyPromise) {
     readyPromise = Promise.all(
       MODEL_NAMES.map(async (name) => {
-        const gltf = await loader.loadAsync(`/models/${name}.glb`);
+        const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/${name}.glb`);
         cache.set(name, gltf.scene);
       })
     );

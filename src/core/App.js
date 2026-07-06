@@ -46,7 +46,7 @@ export class App {
     this.settings = new Settings();
     this.audio = new AudioManager(this.settings);
     // custom wave-time track; generative music stays the fallback if it fails
-    loadMidi('/audio/pixel_pursuit_quiet_pulse.mid')
+    loadMidi(`${import.meta.env.BASE_URL}audio/pixel_pursuit_quiet_pulse.mid`)
       .then((song) => this.audio.setTenseSong(song))
       .catch((err) => console.warn('Tense MIDI failed to load, using generative music:', err));
     this.game = null;
