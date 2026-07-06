@@ -4,9 +4,11 @@ import { MAPS } from '../config/maps.js';
 // wires the callbacks. Handlers are assigned (not addEventListener'd) so the
 // class can be constructed once and screens reused across game runs.
 export class Screens {
-  constructor({ settings, audio, onSelectMap, onResume, onQuitToMenu, onRetry }) {
+  constructor({ settings, audio, records, onSelectMap, onResume, onQuitToMenu, onRetry }) {
     this.settings = settings;
     this.audio = audio;
+    this.records = records;
+    this.onSelectMap = onSelectMap;
 
     this.menu = document.getElementById('menu-screen');
     this.mapSelect = document.getElementById('map-select-screen');
@@ -33,6 +35,7 @@ export class Screens {
     this.selectedMode = 'campaign';
     for (const btn of document.querySelectorAll('#mode-toggle button')) {
       btn.onclick = () => {
+        if (btn.disabled) return;
         audio.play('ui_click');
         this.selectedMode = btn.dataset.mode;
         for (const b of document.querySelectorAll('#mode-toggle button')) {
@@ -41,11 +44,7 @@ export class Screens {
       };
     }
 
-    // ---- map cards ----
-    const cardsRoot = document.getElementById('map-cards');
-    for (const mapDef of MAPS) {
-      cardsRoot.appendChild(this._buildMapCard(mapDef, onSelectMap));
-    }
+    this._refreshMapCards();
 
     // ---- settings ----
     this.musicSlider = document.getElementById('setting-music');
@@ -60,6 +59,8 @@ export class Screens {
     };
     this.shadowSelect.onchange = () => settings.set('shadowQuality', this.shadowSelect.value);
     this.shakeCheck.onchange = () => settings.set('screenShake', this.shakeCheck.checked);
+    this.autoStartCheck = document.getElementById('setting-autostart');
+    this.autoStartCheck.onchange = () => settings.set('autoStartWave', this.autoStartCheck.checked);
     document.getElementById('settings-close-btn').onclick = () => {
       audio.play('ui_click');
       this.closeSettings();
@@ -90,11 +91,41 @@ export class Screens {
     };
   }
 
+  // Rebuilt on every map-select visit so records and the endless lock refresh.
+  _refreshMapCards() {
+    const cardsRoot = document.getElementById('map-cards');
+    cardsRoot.innerHTML = '';
+    for (const mapDef of MAPS) {
+      cardsRoot.appendChild(this._buildMapCard(mapDef, this.onSelectMap));
+    }
+
+    // endless unlocks once any map's campaign has been won
+    const endlessBtn = document.querySelector('#mode-toggle button[data-mode="endless"]');
+    const unlocked = this.records.anyCampaignWon();
+    endlessBtn.disabled = !unlocked;
+    endlessBtn.title = unlocked ? '' : 'Beat any map’s campaign to unlock Endless';
+    endlessBtn.textContent = unlocked ? 'Endless' : '\u{1F512} Endless';
+    if (!unlocked && this.selectedMode === 'endless') {
+      this.selectedMode = 'campaign';
+      for (const b of document.querySelectorAll('#mode-toggle button')) {
+        b.classList.toggle('active', b.dataset.mode === 'campaign');
+      }
+    }
+  }
+
   _buildMapCard(mapDef, onSelectMap) {
     const card = document.createElement('button');
     card.className = 'map-card';
     const badge = mapDef.difficulty.toLowerCase();
     const m = mapDef.modifiers;
+    const rec = this.records.get(mapDef.id);
+    let recordLine = 'No runs yet';
+    if (rec.bestCampaignWave > 0 || rec.bestEndlessWave > 0) {
+      const parts = [];
+      if (rec.bestCampaignWave > 0) parts.push(`Best: wave ${rec.bestCampaignWave}${rec.campaignWon ? ' ✓' : ''}`);
+      if (rec.bestEndlessWave > 0) parts.push(`Endless: ${rec.bestEndlessWave}`);
+      recordLine = parts.join(' · ');
+    }
     card.innerHTML = `
       <span class="difficulty-badge ${badge}">${mapDef.difficulty}</span>
       <div class="mc-name">${mapDef.name}</div>
@@ -103,7 +134,8 @@ export class Screens {
       <div class="mc-mods">
         &#10084; ${m.startLives} lives &middot; Enemy HP &times;${m.hp}<br>
         Speed &times;${m.speed} &middot; Gold &times;${m.gold}
-      </div>`;
+      </div>
+      <div class="mc-record">${recordLine}</div>`;
     this._drawMapPreview(card.querySelector('canvas'), mapDef);
     card.onclick = () => {
       this.audio.play('ui_click');
@@ -151,6 +183,7 @@ export class Screens {
   // ---- visibility ----------------------------------------------------------
 
   show(name) {
+    if (name === 'mapSelect') this._refreshMapCards();
     this.menu.classList.toggle('hidden', name !== 'menu');
     this.mapSelect.classList.toggle('hidden', name !== 'mapSelect');
     this.hud.classList.toggle('hidden', name !== 'game');
@@ -166,6 +199,7 @@ export class Screens {
     this.sfxSlider.value = this.settings.get('sfxVolume');
     this.shadowSelect.value = this.settings.get('shadowQuality');
     this.shakeCheck.checked = this.settings.get('screenShake');
+    this.autoStartCheck.checked = this.settings.get('autoStartWave');
     this.settingsModal.classList.remove('hidden');
   }
 

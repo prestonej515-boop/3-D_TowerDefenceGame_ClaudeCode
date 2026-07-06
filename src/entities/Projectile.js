@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import { getModel } from '../systems/ModelLibrary.js';
 
 const _toTarget = new THREE.Vector3();
+const _lookAt = new THREE.Vector3();
 
 // A real traveling projectile with per-frame collision checks (no hitscan).
 // Homes toward its target; if the target dies mid-flight it continues to the
@@ -33,14 +35,23 @@ export class Projectile {
     this.trailAcc = 0; // trail spawn accumulator (managed by TowerManager)
     this.done = false;
 
-    this.mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(opts.size, 8, 6),
-      new THREE.MeshStandardMaterial({
-        color: opts.color,
-        emissive: opts.color,
-        emissiveIntensity: 2.2, // bright enough to catch the bloom pass
-      })
-    );
+    // kit ammo model when the tower specifies one; glowing sphere otherwise
+    // (Frost keeps the sphere — it reads as an ice orb and feeds the bloom)
+    this.mesh = opts.ammo ? getModel(opts.ammo) : null;
+    this._ownsGeometry = !this.mesh;
+    if (this.mesh) {
+      this.mesh.scale.setScalar(1.5);
+      this.spin = opts.ammo.includes('boulder') || opts.ammo.includes('cannonball');
+    } else {
+      this.mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(opts.size, 8, 6),
+        new THREE.MeshStandardMaterial({
+          color: opts.color,
+          emissive: opts.color,
+          emissiveIntensity: 2.2, // bright enough to catch the bloom pass
+        })
+      );
+    }
     this.mesh.position.copy(origin);
     scene.add(this.mesh);
   }
@@ -85,12 +96,22 @@ export class Projectile {
       this.mesh.position.y =
         this.originY + (this.lastTargetPos.y - this.originY) * t + Math.sin(t * Math.PI) * this.arcHeight;
     }
+    if (!this._ownsGeometry) {
+      // orient kit ammo along its travel direction (matters for the arrow)
+      _lookAt.copy(this.mesh.position).add(_toTarget);
+      this.mesh.lookAt(_lookAt);
+      if (this.spin) this.mesh.rotateX(dt * 14); // tumbling boulder/cannonball
+    }
     return null;
   }
 
   dispose() {
     this.scene.remove(this.mesh);
-    this.mesh.geometry.dispose();
-    this.mesh.material.dispose();
+    if (this._ownsGeometry) {
+      // only the procedural sphere owns its resources; kit ammo shares the
+      // ModelLibrary cache
+      this.mesh.geometry.dispose();
+      this.mesh.material.dispose();
+    }
   }
 }

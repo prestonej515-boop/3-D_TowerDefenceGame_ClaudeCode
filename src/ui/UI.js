@@ -115,7 +115,8 @@ export class UI {
     const canStart = waveManager.canStartWave && this.game.state === 'playing';
     this.startBtn.disabled = !canStart;
     if (canStart) {
-      this.startBtn.textContent = `Start Wave ${waveManager.currentWave + 1}`;
+      const auto = this.game.autoStartTimer > 0 ? ` (auto ${Math.ceil(3 - this.game.autoStartTimer)})` : '';
+      this.startBtn.textContent = `Start Wave ${waveManager.currentWave + 1}${auto}`;
     } else if (waveManager.active) {
       this.startBtn.textContent = `Wave ${waveManager.currentWave} in progress…`;
     }
@@ -256,9 +257,9 @@ export class UI {
 
   // ---- feedback -----------------------------------------------------------------
 
-  toast(text) {
+  toast(text, variant = '') {
     const el = document.createElement('div');
-    el.className = 'toast';
+    el.className = variant ? `toast ${variant}` : 'toast';
     el.textContent = text;
     this.toastContainer.appendChild(el);
     setTimeout(() => el.remove(), 2600);

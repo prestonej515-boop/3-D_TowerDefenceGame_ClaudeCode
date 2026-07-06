@@ -25,6 +25,10 @@ export class AudioManager {
     this.lastPlayed = {}; // per-sfx throttle timestamps
     this.mood = 'calm';
     this.musicPlaying = false;
+    // optional MIDI song that replaces the generative music during 'tense'
+    this.song = null; // { notes, duration } from MidiSong.parseMidi
+    this.songStartTime = null;
+    this.songIndex = 0;
 
     settings.onChange((key, value) => {
       if (!this.ctx) return;
@@ -186,23 +190,68 @@ export class AudioManager {
     this._schedulerId = null;
   }
 
+  // Load a .mid to play (looped) as the tense/wave music instead of the
+  // generative arps. Fire-and-forget; generative music remains the fallback.
+  setTenseSong(song) {
+    this.song = song;
+    this.songStartTime = null;
+  }
+
   setMood(mood) {
     this.mood = mood;
+    if (mood !== 'tense') this.songStartTime = null; // song restarts next wave
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     this.tenseGain.gain.cancelScheduledValues(t);
     this.calmGain.gain.cancelScheduledValues(t);
     this.tenseGain.gain.linearRampToValueAtTime(mood === 'tense' ? 1 : 0, t + 1.5);
-    this.calmGain.gain.linearRampToValueAtTime(mood === 'tense' ? 0.5 : 1, t + 1.5);
+    // with a song loaded, the calm layers duck out fully during waves so the
+    // two tempos never fight
+    const calmTense = this.song ? 0 : 0.5;
+    this.calmGain.gain.linearRampToValueAtTime(mood === 'tense' ? calmTense : 1, t + 1.5);
   }
 
   _schedule() {
     if (!this.musicPlaying || this.ctx.state !== 'running') return;
+    const songActive = this.song && this.mood === 'tense';
     // lookahead scheduling keeps timing sample-accurate without a tight loop
     while (this.nextStepTime < this.ctx.currentTime + 0.12) {
-      this._playStep(this.step, this.nextStepTime);
+      if (!songActive) this._playStep(this.step, this.nextStepTime);
       this.step = (this.step + 1) % 64;
       this.nextStepTime += this.stepDur;
+    }
+    if (songActive) this._scheduleSong(this.ctx.currentTime + 0.12);
+  }
+
+  // Schedule MIDI song notes (looped) into the tense fader.
+  _scheduleSong(lookaheadEnd) {
+    const { notes, duration } = this.song;
+    if (!notes.length) return;
+    if (this.songStartTime === null) {
+      this.songStartTime = this.ctx.currentTime + 0.05;
+      this.songIndex = 0;
+    }
+    for (;;) {
+      if (this.songIndex >= notes.length) {
+        this.songStartTime += duration; // loop
+        this.songIndex = 0;
+      }
+      const n = notes[this.songIndex];
+      const t = this.songStartTime + n.time;
+      if (t >= lookaheadEnd) break;
+      this.songIndex++;
+      if (t < this.ctx.currentTime) continue; // missed while tab was hidden
+      const freq = 440 * Math.pow(2, (n.midi - 69) / 12);
+      // voice by register: low notes get a warm triangle bass, the rest the
+      // chiptune square lead
+      const bass = n.midi < 52;
+      this._tone(this.tenseGain, t, {
+        type: bass ? 'triangle' : 'square',
+        freq,
+        attack: 0.008,
+        peak: (bass ? 0.16 : 0.07) * (0.35 + 0.65 * n.velocity),
+        decay: Math.min(Math.max(n.dur, 0.08), 1.2),
+      });
     }
   }
 
