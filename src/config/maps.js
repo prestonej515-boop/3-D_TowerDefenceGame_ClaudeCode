@@ -70,7 +70,7 @@ export const MAPS = [
       [16, 5],
     ],
     decorationCount: 26,
-    modifiers: { hp: 1.6, speed: 1.2, gold: 0.8, startLives: 15 },
+    modifiers: { hp: 1.6, speed: 1.2, gold: 0.85, startLives: 15 },
   },
 ];
 

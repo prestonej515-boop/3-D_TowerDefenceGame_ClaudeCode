@@ -26,8 +26,8 @@ export class Enemy {
 
     this.alive = true;
     this.reachedEnd = false;
-    this.slowTimer = 0;
-    this.slowFactor = 1;
+    // active timed effects, e.g. { type: 'slow', speedMult: 0.4, remaining: 2.6 }
+    this.statusEffects = [];
     this.hitFlash = 0;
     // death squash animation state (manager keeps the mesh briefly after death)
     this.deathAnim = 0;
@@ -117,7 +117,11 @@ export class Enemy {
   }
 
   get speed() {
-    return this.baseSpeed * this.slowFactor;
+    let mult = 1;
+    for (const fx of this.statusEffects) {
+      if (fx.speedMult != null) mult = Math.min(mult, fx.speedMult);
+    }
+    return this.baseSpeed * mult;
   }
 
   // Monotonic path-progress metric for 'first' targeting: waypoint index plus
@@ -136,12 +140,14 @@ export class Enemy {
       return;
     }
 
-    if (this.slowTimer > 0) {
-      this.slowTimer -= dt;
-      if (this.slowTimer <= 0) {
-        this.slowFactor = 1;
-        this._refreshTint();
+    if (this.statusEffects.length) {
+      for (let i = this.statusEffects.length - 1; i >= 0; i--) {
+        const fx = this.statusEffects[i];
+        fx.remaining -= dt;
+        if (fx.dps) this.takeDamage(fx.dps * dt);
+        if (fx.remaining <= 0) this.statusEffects.splice(i, 1);
       }
+      this._refreshTint();
     }
 
     if (this.waypointIndex < this.waypoints.length - 1) {
@@ -198,14 +204,28 @@ export class Enemy {
     return dealt;
   }
 
-  applySlow(factor, duration) {
-    this.slowFactor = Math.min(this.slowFactor, factor); // strongest slow wins
-    this.slowTimer = Math.max(this.slowTimer, duration);
+  // Adds or refreshes a named timed effect. `params` may set speedMult
+  // (slows/stuns) and/or dps (burn/poison); same-type effects keep the
+  // stronger speedMult and the longer remaining duration.
+  applyEffect(type, params, duration) {
+    const existing = this.statusEffects.find((e) => e.type === type);
+    if (existing) {
+      if (params.speedMult != null) existing.speedMult = Math.min(existing.speedMult ?? 1, params.speedMult);
+      if (params.dps != null) existing.dps = params.dps;
+      existing.remaining = Math.max(existing.remaining, duration);
+    } else {
+      this.statusEffects.push({ type, remaining: duration, ...params });
+    }
     this._refreshTint();
   }
 
+  applySlow(factor, duration) {
+    this.applyEffect('slow', { speedMult: factor }, duration);
+  }
+
   _refreshTint() {
-    if (this.slowFactor < 1) {
+    const slowed = this.statusEffects.some((fx) => fx.speedMult != null && fx.speedMult < 1);
+    if (slowed) {
       this.material.color.copy(this.baseColor).lerp(new THREE.Color(0x66ccff), 0.55);
     } else {
       this.material.color.copy(this.baseColor);
