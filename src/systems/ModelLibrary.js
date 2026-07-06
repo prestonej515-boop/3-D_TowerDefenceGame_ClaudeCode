@@ -32,6 +32,11 @@ const MODEL_NAMES = [
   // mortar (squat round base + catapult)
   'tower-round-base',
   'weapon-catapult',
+  // enemies
+  'enemy-ufo-a',
+  'enemy-ufo-b',
+  'enemy-ufo-c',
+  'enemy-ufo-d',
 ];
 
 let readyPromise = null;

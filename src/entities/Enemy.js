@@ -1,8 +1,21 @@
 import * as THREE from 'three';
 import { ENEMIES } from '../config.js';
+import { getModel } from '../systems/ModelLibrary.js';
 
 const _dir = new THREE.Vector3();
 const _perp = new THREE.Vector3();
+
+// Kenney kit UFO per enemy type; tint multiplies the model's palette so
+// reused bodies stay visually distinct. Scale is relative to the raw model.
+const ENEMY_MODELS = {
+  basic: { model: 'enemy-ufo-a', scale: 1.3 },
+  armored: { model: 'enemy-ufo-c', scale: 1.6, tint: 0x5c6470 },
+  swarm: { model: 'enemy-ufo-b', scale: 0.85, tint: 0xe8a33d },
+  hidden: { model: 'enemy-ufo-d', scale: 1.2, tint: 0x8a7ff0 },
+  mage: { model: 'enemy-ufo-d', scale: 1.9, tint: 0x9b59d0 },
+  minion: { model: 'enemy-ufo-b', scale: 0.65, tint: 0xc9a2e8 },
+  boss: { model: 'enemy-ufo-c', scale: 2.8, tint: 0x8c1f1f },
+};
 
 export class Enemy {
   // modifiers: per-map difficulty multipliers { hp, speed }
@@ -51,105 +64,35 @@ export class Enemy {
   }
 
   _buildMesh() {
-    const { color, size } = this.cfg;
+    const { size } = this.cfg;
     this.group = new THREE.Group();
 
-    this.material = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
-    this.baseColor = new THREE.Color(color);
-    if (this.hidden) {
-      // ghostly: transparent with a shimmer pulse (see update) so the player
-      // reads "present but untargetable" rather than a rendering bug
-      this.material.transparent = true;
-      this.material.opacity = 0.35;
-      this.material.emissive.setHex(color);
-      this.material.emissiveIntensity = 0.25;
-    }
-
-    let bodyGeo;
-    if (this.type === 'armored' || this.type === 'boss') {
-      bodyGeo = new THREE.BoxGeometry(size * 1.6, size * 1.6, size * 1.9);
-    } else if (this.type === 'swarm' || this.type === 'minion') {
-      bodyGeo = new THREE.SphereGeometry(size, 10, 8);
-    } else {
-      bodyGeo = new THREE.CapsuleGeometry(size * 0.7, size, 4, 8);
-    }
-    this.body = new THREE.Mesh(bodyGeo, this.material);
+    const spec = ENEMY_MODELS[this.type] || ENEMY_MODELS.basic;
+    this._baseScale = spec.scale;
+    this.body = getModel(spec.model) || new THREE.Group();
+    this.body.scale.setScalar(spec.scale);
     this.body.position.y = size + 0.25;
-    this.body.castShadow = true;
     this.group.add(this.body);
 
-    // simple toony face: two dark eyes on the leading side (+z = travel dir)
-    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a22, roughness: 0.4 });
-    const eyeGeo = new THREE.SphereGeometry(size * 0.14, 6, 5);
-    for (const side of [-1, 1]) {
-      const eye = new THREE.Mesh(eyeGeo, eyeMat);
-      eye.position.set(side * size * 0.32, size * 0.25, size * (this.type === 'armored' ? 0.96 : 0.75));
-      this.body.add(eye);
-    }
-
-    if (this.type === 'armored') {
-      // helmet ridge + armor plate
-      const plate = new THREE.Mesh(
-        new THREE.BoxGeometry(size * 1.8, size * 0.4, size * 2.0),
-        new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.4, metalness: 0.5 })
-      );
-      plate.position.y = size * 0.9;
-      this.body.add(plate);
-      const ridge = new THREE.Mesh(
-        new THREE.BoxGeometry(size * 0.3, size * 0.5, size * 1.6),
-        new THREE.MeshStandardMaterial({ color: 0xb8452f, roughness: 0.6 })
-      );
-      ridge.position.y = size * 1.15;
-      this.body.add(ridge);
-    } else if (this.type === 'mage') {
-      // wizard hat + staff so the summoner reads as a caster
-      const hat = new THREE.Mesh(
-        new THREE.ConeGeometry(size * 0.55, size * 1.1, 8),
-        new THREE.MeshStandardMaterial({ color: 0x4a1f7a, roughness: 0.6 })
-      );
-      hat.position.y = size * 1.15;
-      hat.castShadow = true;
-      this.body.add(hat);
-      const staff = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.05, 0.05, size * 2.0),
-        new THREE.MeshStandardMaterial({ color: 0x6a4a2a, roughness: 0.9 })
-      );
-      staff.position.set(size * 0.75, 0, size * 0.2);
-      this.body.add(staff);
-      this.staffOrb = new THREE.Mesh(
-        new THREE.SphereGeometry(size * 0.2, 8, 6),
-        new THREE.MeshStandardMaterial({ color: 0xc9a2e8, emissive: 0xb060e8, emissiveIntensity: 1.5 })
-      );
-      this.staffOrb.position.set(size * 0.75, size * 1.05, size * 0.2);
-      this.body.add(this.staffOrb);
-    } else if (this.type === 'boss') {
-      // heavy armor plate, horns, and a crown ridge — the wave anchor
-      const plate = new THREE.Mesh(
-        new THREE.BoxGeometry(size * 1.85, size * 0.45, size * 2.05),
-        new THREE.MeshStandardMaterial({ color: 0x2a2228, roughness: 0.4, metalness: 0.6 })
-      );
-      plate.position.y = size * 0.9;
-      this.body.add(plate);
-      const hornMat = new THREE.MeshStandardMaterial({ color: 0xd8c9a0, roughness: 0.5 });
-      for (const side of [-1, 1]) {
-        const horn = new THREE.Mesh(new THREE.ConeGeometry(size * 0.18, size * 0.7, 6), hornMat);
-        horn.position.set(side * size * 0.6, size * 1.25, size * 0.3);
-        horn.rotation.z = -side * 0.5;
-        horn.castShadow = true;
-        this.body.add(horn);
+    // clone materials per instance so hit flash / slow tint / hidden shimmer
+    // can't leak across enemies sharing the cached model
+    this.materials = [];
+    const tint = spec.tint ? new THREE.Color(spec.tint) : null;
+    this.body.traverse((obj) => {
+      if (!obj.isMesh) return;
+      obj.material = obj.material.clone();
+      if (tint) obj.material.color.lerp(tint, 0.45);
+      if (this.hidden) {
+        obj.material.transparent = true;
+        obj.material.opacity = 0.35;
       }
-      const ridge = new THREE.Mesh(
-        new THREE.BoxGeometry(size * 0.35, size * 0.6, size * 1.7),
-        new THREE.MeshStandardMaterial({ color: 0xd8b13a, roughness: 0.45, metalness: 0.5 })
-      );
-      ridge.position.y = size * 1.2;
-      this.body.add(ridge);
-    }
+      this.materials.push({ mat: obj.material, baseColor: obj.material.color.clone() });
+    });
 
     // HP bar (billboarded toward camera by update)
     this.hpBar = new THREE.Group();
     const barW = this.cfg.boss ? 1.8 : 1.0;
-    const bg = new THREE.Mesh(
+    this.hpBarBg = new THREE.Mesh(
       new THREE.PlaneGeometry(barW, 0.12),
       new THREE.MeshBasicMaterial({ color: 0x30121a, depthTest: false })
     );
@@ -158,7 +101,7 @@ export class Enemy {
       new THREE.MeshBasicMaterial({ color: 0x58d858, depthTest: false })
     );
     this.hpFill.position.z = 0.001;
-    this.hpBar.add(bg);
+    this.hpBar.add(this.hpBarBg);
     this.hpBar.add(this.hpFill);
     this.hpBar.position.y = this.cfg.size * 2 + 0.8;
     this.hpBar.renderOrder = 999;
@@ -200,7 +143,8 @@ export class Enemy {
       // death squash: flatten & widen, then the manager removes us
       this.deathAnim += dt;
       const k = Math.min(this.deathAnim / 0.18, 1);
-      this.body.scale.set(1 + k * 0.6, Math.max(1 - k, 0.05), 1 + k * 0.6);
+      const s = this._baseScale;
+      this.body.scale.set(s * (1 + k * 0.6), Math.max(s * (1 - k), 0.02), s * (1 + k * 0.6));
       this.hpBar.visible = false;
       return;
     }
@@ -237,26 +181,23 @@ export class Enemy {
       this.reachedEnd = true;
     }
 
-    // bob for a bit of life
+    // hover bob for a bit of life (UFOs float)
     this.body.position.y = this.cfg.size + 0.25 + Math.sin(performance.now() * 0.008 + this.lateralOffset * 10) * 0.06;
 
     // hidden shimmer: opacity pulse marks "here but untargetable"
     if (this.hidden) {
-      this.material.opacity = 0.28 + 0.14 * (0.5 + 0.5 * Math.sin(performance.now() * 0.004 + this.lateralOffset * 6));
-    }
-
-    if (this.staffOrb) {
-      this.staffOrb.material.emissiveIntensity = 1.2 + Math.sin(performance.now() * 0.006) * 0.5;
+      const opacity = 0.28 + 0.14 * (0.5 + 0.5 * Math.sin(performance.now() * 0.004 + this.lateralOffset * 6));
+      for (const { mat } of this.materials) mat.opacity = opacity;
     }
 
     if (this.hitFlash > 0) {
       this.hitFlash -= dt * 6;
-      if (this.hitFlash <= 0) {
-        this.hitFlash = 0;
-        this.material.emissive.setHex(0x000000);
-      } else {
-        this.material.emissive.setHex(0xffffff);
-        this.material.emissiveIntensity = this.hitFlash * 0.5;
+      const intensity = this.hitFlash > 0 ? this.hitFlash * 0.5 : 0;
+      const hex = this.hitFlash > 0 ? 0xffffff : 0x000000;
+      if (this.hitFlash <= 0) this.hitFlash = 0;
+      for (const { mat } of this.materials) {
+        mat.emissive.setHex(hex);
+        mat.emissiveIntensity = intensity;
       }
     }
 
@@ -302,19 +243,24 @@ export class Enemy {
 
   _refreshTint() {
     const slowed = this.statusEffects.some((fx) => fx.speedMult != null && fx.speedMult < 1);
-    if (slowed) {
-      this.material.color.copy(this.baseColor).lerp(new THREE.Color(0x66ccff), 0.55);
-    } else if (this.enraged) {
-      this.material.color.copy(this.baseColor).lerp(new THREE.Color(0xff5020), 0.6);
-    } else {
-      this.material.color.copy(this.baseColor);
+    for (const { mat, baseColor } of this.materials) {
+      if (slowed) {
+        mat.color.copy(baseColor).lerp(new THREE.Color(0x66ccff), 0.55);
+      } else if (this.enraged) {
+        mat.color.copy(baseColor).lerp(new THREE.Color(0xff5020), 0.6);
+      } else {
+        mat.color.copy(baseColor);
+      }
     }
   }
 
   dispose() {
-    this.group.traverse((obj) => {
-      if (obj.geometry) obj.geometry.dispose();
-      if (obj.material) obj.material.dispose();
-    });
+    // model geometry is shared with the ModelLibrary cache — only dispose
+    // per-instance resources (cloned materials + the HP bar)
+    for (const { mat } of this.materials) mat.dispose();
+    this.hpBarBg.geometry.dispose();
+    this.hpBarBg.material.dispose();
+    this.hpFill.geometry.dispose();
+    this.hpFill.material.dispose();
   }
 }
