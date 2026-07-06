@@ -29,7 +29,9 @@ const ASSEMBLY = {
     scale: 2.0,
   },
   sniper: {
-    parts: ['tower-square-bottom-a', 'tower-square-middle-a', 'tower-square-top-a'],
+    // watchtower scaffold: short at tier 1, tall from tier 2 (swap, not stack)
+    parts: ['wood-structure', 'wood-structure-high'],
+    swapParts: true,
     weapon: 'weapon-ballista',
     scale: 1.7,
   },
@@ -149,16 +151,26 @@ export class Tower {
     while (this.body.children.length) this.body.remove(this.body.children[0]);
 
     const spec = ASSEMBLY[this.type];
-    const count = Math.min(this.level + 1, spec.parts.length);
     let stackTop = 0;
-    for (let i = 0; i < count; i++) {
-      const part = getModel(spec.parts[i]);
-      if (!part) continue;
-      _box.setFromObject(part);
-      const height = _box.max.y;
-      part.position.y = stackTop;
-      this.body.add(part);
-      stackTop += height;
+    if (spec.swapParts) {
+      // one body per tier, replaced on upgrade (e.g. watchtower grows taller)
+      const part = getModel(spec.parts[Math.min(this.level, spec.parts.length - 1)]);
+      if (part) {
+        _box.setFromObject(part);
+        stackTop = _box.max.y;
+        this.body.add(part);
+      }
+    } else {
+      const count = Math.min(this.level + 1, spec.parts.length);
+      for (let i = 0; i < count; i++) {
+        const part = getModel(spec.parts[i]);
+        if (!part) continue;
+        _box.setFromObject(part);
+        const height = _box.max.y;
+        part.position.y = stackTop;
+        this.body.add(part);
+        stackTop += height;
+      }
     }
 
     // rotating head: weapon + projectile spawn point

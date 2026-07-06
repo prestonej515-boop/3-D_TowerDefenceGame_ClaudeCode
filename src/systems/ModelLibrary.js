@@ -24,10 +24,9 @@ const MODEL_NAMES = [
   'tower-round-middle-c',
   'tower-round-crystals',
   'detail-crystal',
-  // sniper (tall square tower + ballista)
-  'tower-square-bottom-a',
-  'tower-square-middle-a',
-  'tower-square-top-a',
+  // sniper (wooden watchtower + ballista)
+  'wood-structure',
+  'wood-structure-high',
   'weapon-ballista',
   // mortar (squat round base + catapult)
   'tower-round-base',
