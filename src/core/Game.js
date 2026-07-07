@@ -8,7 +8,7 @@ import { WaveManager } from '../systems/WaveManager.js';
 import { Economy } from '../systems/Economy.js';
 import { Effects } from '../systems/Effects.js';
 import { UI } from '../ui/UI.js';
-import { TOWERS } from '../config.js';
+import { TOWERS, ENEMIES, DIFFICULTY } from '../config.js';
 import { THEMES } from '../config/maps.js';
 
 const SHOT_SFX = {
@@ -17,8 +17,9 @@ const SHOT_SFX = {
   slow: 'shoot_slow',
   sniper: 'shoot_single',
   mortar: 'shoot_splash',
+  flame: 'shoot_flame',
 };
-const TOWER_HOTKEYS = { 1: 'single', 2: 'splash', 3: 'slow', 4: 'sniper', 5: 'mortar' };
+const TOWER_HOTKEYS = { 1: 'single', 2: 'splash', 3: 'slow', 4: 'sniper', 5: 'mortar', 6: 'flame' };
 const AUTO_START_DELAY = 3; // seconds between waves with auto-start enabled
 
 // One playthrough of one map. Created by App per run; dispose() tears the
@@ -26,9 +27,15 @@ const AUTO_START_DELAY = 3; // seconds between waves with auto-start enabled
 // mode: 'campaign' (authored waves, win at the end) | 'endless' (generated
 // waves that scale until the player falls).
 export class Game {
-  constructor(container, mapDef, { settings, audio, mode = 'campaign', onPauseRequest, onGameEnd }) {
+  constructor(
+    container,
+    mapDef,
+    { settings, audio, mode = 'campaign', difficulty = 'normal', flameUnlocked = false, onPauseRequest, onGameEnd }
+  ) {
     this.mapDef = mapDef;
     this.mode = mode;
+    this.difficulty = difficulty;
+    this.flameUnlocked = flameUnlocked;
     this.settings = settings;
     this.audio = audio;
     this.onPauseRequest = onPauseRequest || (() => {});
@@ -64,7 +71,14 @@ export class Game {
     this.selectedTower = null;
     this.autoStartTimer = 0; // counts up to AUTO_START_DELAY between waves
 
-    const mods = mapDef.modifiers;
+    // player difficulty multiplies on top of the map's own modifiers
+    const diff = DIFFICULTY[difficulty] || DIFFICULTY.normal;
+    const mods = {
+      hp: mapDef.modifiers.hp * diff.hp,
+      speed: mapDef.modifiers.speed * diff.speed,
+      gold: mapDef.modifiers.gold * diff.gold,
+      startLives: mapDef.modifiers.startLives,
+    };
     this.map = new MapBuilder(this.scene, mapDef);
     this.effects = new Effects(this.scene, settings);
     this.economy = new Economy({ startLives: mods.startLives, goldMultiplier: mods.gold });
@@ -75,11 +89,19 @@ export class Game {
         this.killCount++;
         const earned = this.economy.addIncome(enemy.reward);
         this.effects.deathBurst(enemy.position, enemy.cfg.color);
+        if (enemy.cfg.boss) {
+          // feather explosion + shake for the boss cinematic
+          this.effects.deathBurst(enemy.position, 0xffffff);
+          this.effects.deathBurst(enemy.position, 0xffd94d);
+          this.effects.shake();
+        }
         this.effects.goldPopup(enemy.position, earned);
         this.audio.play('death');
       },
       onSummon: (summoner) => {
-        this.effects.impactPuff(summoner.position, 0xb060e8, 1.0);
+        // boss's delayed brood = the roast landing; puff in feather colors
+        const color = summoner.cfg.boss ? 0xf5e6c8 : 0xb060e8;
+        this.effects.impactPuff(summoner.position, color, summoner.cfg.boss ? 1.6 : 1.0);
       },
       onLeak: (enemy) => {
         const remaining = this.economy.loseLives(enemy.livesCost);
@@ -109,6 +131,7 @@ export class Game {
 
     this.waveManager = new WaveManager(this.enemyManager, {
       endless: mode === 'endless',
+      bossType: mapDef.bossType || 'boss',
       onWaveClear: (wave) => {
         if (this.state !== 'playing') return;
         const bonus = this.economy.waveClearBonus(wave);
@@ -183,6 +206,10 @@ export class Game {
     if (this.state !== 'playing' || this.paused) return;
     if (this.placementType === type) {
       this.cancelPlacement();
+      return;
+    }
+    if (TOWERS[type].unlockedBy === 'campaignWin' && !this.flameUnlocked) {
+      this.ui.toast('🔒 Win any campaign to unlock the Flame tower');
       return;
     }
     if (!this.economy.canAfford(TOWERS[type].cost)) return;
@@ -370,7 +397,8 @@ export class Game {
     const groups = this.waveManager.getNextWaveGroups();
     if (this.waveManager.startNextWave()) {
       this.autoStartTimer = 0;
-      if (groups && groups.some((g) => g.type === 'boss')) {
+      // groups come back with the map's boss type already resolved
+      if (groups && groups.some((g) => ENEMIES[g.type]?.boss)) {
         this.ui.toast('⚠ Boss incoming!', 'danger');
       }
       this.audio.play('wave_start');

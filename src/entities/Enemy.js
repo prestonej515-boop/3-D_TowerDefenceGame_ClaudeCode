@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ENEMIES } from '../config.js';
 import { getModel } from '../systems/ModelLibrary.js';
+import { createChickenInstance, createRoastedChicken } from '../systems/ChickenModel.js';
 
 const _dir = new THREE.Vector3();
 const _perp = new THREE.Vector3();
@@ -14,7 +15,13 @@ const ENEMY_MODELS = {
   hidden: { model: 'enemy-ufo-d', scale: 1.2, tint: 0x8a7ff0 },
   mage: { model: 'enemy-ufo-d', scale: 1.9, tint: 0x9b59d0 },
   minion: { model: 'enemy-ufo-b', scale: 0.65, tint: 0xc9a2e8 },
-  boss: { model: 'enemy-ufo-c', scale: 2.8, tint: 0x8c1f1f },
+  // chicken: skinned GLB via ChickenModel (model/scale/tint are the fallback
+  // UFO used if the chicken hasn't finished loading)
+  boss: { chicken: true, animation: 'walk01', chickenScale: 5.0, model: 'enemy-ufo-c', scale: 2.8, tint: 0x8c1f1f },
+  chick: { chicken: true, animation: 'run01', chickenScale: 1.6, model: 'enemy-ufo-b', scale: 0.6, tint: 0xffd94d },
+  bossDunes: { model: 'enemy-ufo-c', scale: 2.6, tint: 0xd08a3d },
+  colossusHalf: { model: 'enemy-ufo-c', scale: 1.8, tint: 0xc47a35 },
+  bossGlacier: { model: 'enemy-ufo-d', scale: 2.6, tint: 0x7fd4e8 },
 };
 
 export class Enemy {
@@ -34,8 +41,11 @@ export class Enemy {
 
     this.hidden = !!cfg.hidden; // untargetable unless a tower seesHidden
     this.enraged = false;
-    // summon bookkeeping (EnemyManager performs the actual spawns)
-    this.summonTimer = cfg.summons ? cfg.summons.interval : 0;
+    this.shielded = false; // shieldedBySummons bosses (managed by EnemyManager)
+    this.activeMinions = []; // enemies this one summoned (for the shield link)
+    // summon bookkeeping (EnemyManager performs the actual spawns);
+    // summons.initial lets a boss open with an early first summon
+    this.summonTimer = cfg.summons ? (cfg.summons.initial ?? cfg.summons.interval) : 0;
 
     this.waypoints = waypoints;
     this.waypointIndex = 0;
@@ -68,16 +78,54 @@ export class Enemy {
     this.group = new THREE.Group();
 
     const spec = ENEMY_MODELS[this.type] || ENEMY_MODELS.basic;
-    this._baseScale = spec.scale;
-    this.body = getModel(spec.model) || new THREE.Group();
-    this.body.scale.setScalar(spec.scale);
-    this.body.position.y = size + 0.25;
-    this.group.add(this.body);
+    this.mixer = null;
+    let usingChicken = false;
+
+    if (spec.chicken) {
+      const instance = createChickenInstance();
+      if (instance) {
+        usingChicken = true;
+        this._baseScale = 1;
+        // body pivot sits at torso height (projectiles aim at the body
+        // origin); the scaled model hangs below so its feet touch the path
+        this.body = new THREE.Group();
+        instance.model.scale.setScalar(spec.chickenScale);
+        instance.model.position.y = -size;
+        this.body.add(instance.model);
+        this.body.position.y = size + 0.25;
+        this.group.add(this.body);
+
+        const clip = THREE.AnimationClip.findByName(instance.clips, spec.animation) || instance.clips[0];
+        if (clip) {
+          this.mixer = new THREE.AnimationMixer(instance.model);
+          const action = this.mixer.clipAction(clip);
+          action.time = Math.random() * clip.duration; // desync the flock
+          action.play();
+        }
+
+        // boss death cinematic needs these: swap the walk clip for a panicked
+        // flap, then replace the bird with the roast prop
+        if (this.cfg.boss) {
+          this.isChickenBoss = true;
+          this._chickenModel = instance.model;
+          this._chickenClips = instance.clips;
+          this._chickenScale = spec.chickenScale;
+        }
+      }
+    }
+
+    if (!usingChicken) {
+      this._baseScale = spec.scale;
+      this.body = getModel(spec.model) || new THREE.Group();
+      this.body.scale.setScalar(spec.scale);
+      this.body.position.y = size + 0.25;
+      this.group.add(this.body);
+    }
 
     // clone materials per instance so hit flash / slow tint / hidden shimmer
     // can't leak across enemies sharing the cached model
     this.materials = [];
-    const tint = spec.tint ? new THREE.Color(spec.tint) : null;
+    const tint = !usingChicken && spec.tint ? new THREE.Color(spec.tint) : null;
     this.body.traverse((obj) => {
       if (!obj.isMesh) return;
       obj.material = obj.material.clone();
@@ -140,12 +188,13 @@ export class Enemy {
 
   update(dt, cameraQuaternion) {
     if (!this.alive) {
-      // death squash: flatten & widen, then the manager removes us
       this.deathAnim += dt;
+      this.hpBar.visible = false;
+      if (this.isChickenBoss && this._updateBossDeath(dt)) return;
+      // death squash: flatten & widen, then the manager removes us
       const k = Math.min(this.deathAnim / 0.18, 1);
       const s = this._baseScale;
       this.body.scale.set(s * (1 + k * 0.6), Math.max(s * (1 - k), 0.02), s * (1 + k * 0.6));
-      this.hpBar.visible = false;
       return;
     }
 
@@ -153,7 +202,7 @@ export class Enemy {
       for (let i = this.statusEffects.length - 1; i >= 0; i--) {
         const fx = this.statusEffects[i];
         fx.remaining -= dt;
-        if (fx.dps) this.takeDamage(fx.dps * dt);
+        if (fx.dps) this.takeDamage(fx.dps * dt, true);
         if (fx.remaining <= 0) this.statusEffects.splice(i, 1);
       }
       this._refreshTint();
@@ -181,8 +230,13 @@ export class Enemy {
       this.reachedEnd = true;
     }
 
-    // hover bob for a bit of life (UFOs float)
-    this.body.position.y = this.cfg.size + 0.25 + Math.sin(performance.now() * 0.008 + this.lateralOffset * 10) * 0.06;
+    if (this.mixer) {
+      // chicken walk/run cycle; tracks slows/enrage via effective speed
+      this.mixer.update(dt * (this.baseSpeed > 0 ? this.speed / this.baseSpeed : 1));
+    } else {
+      // hover bob for a bit of life (UFOs float)
+      this.body.position.y = this.cfg.size + 0.25 + Math.sin(performance.now() * 0.008 + this.lateralOffset * 10) * 0.06;
+    }
 
     // hidden shimmer: opacity pulse marks "here but untargetable"
     if (this.hidden) {
@@ -207,12 +261,15 @@ export class Enemy {
     this.hpFill.position.x = -(1 - ratio) * this.barW * 0.5;
   }
 
-  // returns actual damage dealt (for per-tower stat attribution)
-  takeDamage(amount) {
+  // returns actual damage dealt (for per-tower stat attribution).
+  // quiet: skip the white hit flash (per-frame DoT ticks would strobe it)
+  takeDamage(amount, quiet = false) {
     if (!this.alive) return 0;
+    // shielded summoners shrug off 90% of damage while their escort lives
+    if (this.shielded) amount *= 0.1;
     const dealt = Math.min(amount, this.hp);
     this.hp -= amount;
-    this.hitFlash = 1;
+    if (!quiet) this.hitFlash = 1;
     if (this.hp <= 0) {
       this.alive = false;
     } else if (this.cfg.enrage && !this.enraged && this.hp / this.maxHp <= this.cfg.enrage.hpThreshold) {
@@ -229,7 +286,7 @@ export class Enemy {
     const existing = this.statusEffects.find((e) => e.type === type);
     if (existing) {
       if (params.speedMult != null) existing.speedMult = Math.min(existing.speedMult ?? 1, params.speedMult);
-      if (params.dps != null) existing.dps = params.dps;
+      if (params.dps != null) existing.dps = Math.max(existing.dps ?? 0, params.dps);
       existing.remaining = Math.max(existing.remaining, duration);
     } else {
       this.statusEffects.push({ type, remaining: duration, ...params });
@@ -241,11 +298,28 @@ export class Enemy {
     this.applyEffect('slow', { speedMult: factor }, duration);
   }
 
+  applyBurn(dps, duration) {
+    this.applyEffect('burn', { dps }, duration);
+  }
+
+  // called by EnemyManager as its summoned escort lives/dies
+  setShielded(on) {
+    if (this.shielded === on) return;
+    this.shielded = on;
+    if (this.hpFill) this.hpFill.material.color.setHex(on ? 0x4ecbd4 : 0x58d858);
+    this._refreshTint();
+  }
+
   _refreshTint() {
     const slowed = this.statusEffects.some((fx) => fx.speedMult != null && fx.speedMult < 1);
+    const burning = this.statusEffects.some((fx) => fx.dps != null && fx.dps > 0);
     for (const { mat, baseColor } of this.materials) {
-      if (slowed) {
+      if (this.shielded) {
+        mat.color.copy(baseColor).lerp(new THREE.Color(0x9fe8ff), 0.65);
+      } else if (slowed) {
         mat.color.copy(baseColor).lerp(new THREE.Color(0x66ccff), 0.55);
+      } else if (burning) {
+        mat.color.copy(baseColor).lerp(new THREE.Color(0xff7a1a), 0.55);
       } else if (this.enraged) {
         mat.color.copy(baseColor).lerp(new THREE.Color(0xff5020), 0.6);
       } else {
@@ -254,9 +328,73 @@ export class Enemy {
     }
   }
 
+  // Boss death cinematic: panic-flap launch into the air, land as the roasted
+  // chicken prop (the brood erupts from it via the manager's delayed spawn),
+  // then flatten away at the end of the linger. Returns false to fall back to
+  // the generic squash (roast prop unavailable).
+  _updateBossDeath(dt) {
+    const t = this.deathAnim;
+    const baseY = this.cfg.size + 0.25;
+    const LAUNCH = 1.0; // keep in sync with cfg.spawnOnDeath.delay — chicks erupt on landing
+    const linger = this.cfg.deathLinger || 2.2;
+
+    if (t < LAUNCH) {
+      if (!this._deathFlap) {
+        this._deathFlap = true;
+        if (this.mixer) {
+          this.mixer.stopAllAction();
+          const clip =
+            THREE.AnimationClip.findByName(this._chickenClips, 'flap') ||
+            THREE.AnimationClip.findByName(this._chickenClips, 'chicken_scared01');
+          if (clip) this.mixer.clipAction(clip).play();
+        }
+      }
+      if (this.mixer) this.mixer.update(dt * 2.2); // frantic flapping
+      const u = t / LAUNCH;
+      this.body.position.y = baseY + 10 * u * (1 - u); // ballistic arc, peaks at 2.5
+      this.body.rotation.y += dt * 9; // death spiral
+      return true;
+    }
+
+    if (!this._roast) {
+      const roast = createRoastedChicken();
+      if (!roast) {
+        this.isChickenBoss = false; // fall back to the generic squash
+        return false;
+      }
+      if (this.mixer) this.mixer.stopAllAction();
+      this._chickenModel.visible = false;
+      this.body.position.y = baseY;
+      this.body.rotation.y = 0;
+      roast.scale.multiplyScalar(this._chickenScale);
+      roast.position.y = -this.cfg.size; // sit on the path like the live model
+      // clone materials per instance so dispose() cleans them with the rest
+      roast.traverse((obj) => {
+        if (!obj.isMesh) return;
+        obj.material = obj.material.clone();
+        this.materials.push({ mat: obj.material, baseColor: obj.material.color.clone() });
+      });
+      this.body.add(roast);
+      this._roast = roast;
+      this._roastBaseScale = roast.scale.clone();
+    }
+
+    // landing squash-bounce, then flatten away over the final stretch
+    const sinceLand = t - LAUNCH;
+    const bounce = sinceLand < 0.2 ? 1 + 0.35 * (1 - sinceLand / 0.2) : 1;
+    const flatten = Math.max(0, (t - (linger - 0.35)) / 0.35);
+    this._roast.scale.set(
+      this._roastBaseScale.x * bounce * (1 + flatten * 0.6),
+      Math.max((this._roastBaseScale.y * (1 - flatten)) / bounce, 0.0005),
+      this._roastBaseScale.z * bounce * (1 + flatten * 0.6)
+    );
+    return true;
+  }
+
   dispose() {
     // model geometry is shared with the ModelLibrary cache — only dispose
     // per-instance resources (cloned materials + the HP bar)
+    if (this.mixer) this.mixer.stopAllAction();
     for (const { mat } of this.materials) mat.dispose();
     this.hpBarBg.geometry.dispose();
     this.hpBarBg.material.dispose();

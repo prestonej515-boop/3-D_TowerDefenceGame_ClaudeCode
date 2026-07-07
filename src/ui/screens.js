@@ -44,6 +44,18 @@ export class Screens {
       };
     }
 
+    // ---- difficulty toggle (easy / normal / hard) ----
+    this.selectedDifficulty = 'normal';
+    for (const btn of document.querySelectorAll('#difficulty-toggle button')) {
+      btn.onclick = () => {
+        audio.play('ui_click');
+        this.selectedDifficulty = btn.dataset.difficulty;
+        for (const b of document.querySelectorAll('#difficulty-toggle button')) {
+          b.classList.toggle('active', b === btn);
+        }
+      };
+    }
+
     this._refreshMapCards();
 
     // ---- settings ----
@@ -139,7 +151,7 @@ export class Screens {
     this._drawMapPreview(card.querySelector('canvas'), mapDef);
     card.onclick = () => {
       this.audio.play('ui_click');
-      onSelectMap(mapDef, this.selectedMode);
+      onSelectMap(mapDef, this.selectedMode, this.selectedDifficulty);
     };
     return card;
   }
@@ -224,14 +236,16 @@ export class Screens {
     return !this.pause.classList.contains('hidden');
   }
 
-  showEnd(won, wave, mapDef, mode = 'campaign', stats = null) {
+  showEnd(won, wave, mapDef, mode = 'campaign', stats = null, difficulty = 'normal') {
     const endless = mode === 'endless';
+    const diffLabel = difficulty[0].toUpperCase() + difficulty.slice(1);
     document.getElementById('end-title').textContent = won ? 'Victory!' : endless ? 'Run Over' : 'Game Over';
-    document.getElementById('end-text').textContent = won
-      ? `You held ${mapDef.name} through all ${wave} waves.`
-      : endless
-        ? `Your endless run on ${mapDef.name} ended on wave ${wave}.`
-        : `${mapDef.name} fell on wave ${wave}.`;
+    document.getElementById('end-text').textContent =
+      (won
+        ? `You held ${mapDef.name} through all ${wave} waves.`
+        : endless
+          ? `Your endless run on ${mapDef.name} ended on wave ${wave}.`
+          : `${mapDef.name} fell on wave ${wave}.`) + ` (${diffLabel} difficulty)`;
 
     const statsEl = document.getElementById('end-stats');
     if (stats) {

@@ -44,6 +44,11 @@ const ASSEMBLY = {
     ammo: 'weapon-ammo-boulder',
     scale: 2.0,
   },
+  flame: {
+    parts: ['tower-square-bottom-c', 'tower-square-middle-c', 'tower-square-top-c'],
+    weapon: 'weapon-cannon',
+    scale: 2.0,
+  },
 };
 
 export class Tower {
@@ -309,6 +314,8 @@ export class Tower {
         splashRadius: s.splashRadius || 0,
         slowFactor: s.slowFactor || null,
         slowDuration: s.slowDuration || 0,
+        burnDps: s.burnDps || null,
+        burnDuration: s.burnDuration || 0,
         arc: !!this.cfg.arc,
         ammo: ASSEMBLY[this.type].ammo || null,
       };

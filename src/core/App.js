@@ -6,6 +6,7 @@ import { AudioManager } from '../systems/AudioManager.js';
 import { loadMidi } from '../systems/MidiSong.js';
 import { Screens } from '../ui/screens.js';
 import { preloadModels } from '../systems/ModelLibrary.js';
+import { preloadChickenModel } from '../systems/ChickenModel.js';
 import { createSceneContext } from '../scene/sceneSetup.js';
 import { MapBuilder } from '../scene/MapBuilder.js';
 import { Game } from './Game.js';
@@ -45,10 +46,14 @@ export class App {
     this.container = container;
     this.settings = new Settings();
     this.audio = new AudioManager(this.settings);
-    // custom wave-time track; generative music stays the fallback if it fails
+    // custom wave/build-time tracks; generative music stays the fallback if
+    // either fails to load
     loadMidi(`${import.meta.env.BASE_URL}audio/pixel_pursuit_quiet_pulse.mid`)
       .then((song) => this.audio.setTenseSong(song))
       .catch((err) => console.warn('Tense MIDI failed to load, using generative music:', err));
+    loadMidi(`${import.meta.env.BASE_URL}audio/pixel_pursuit_soft_pluck.mid`)
+      .then((song) => this.audio.setCalmSong(song))
+      .catch((err) => console.warn('Calm MIDI failed to load, using generative music:', err));
     this.game = null;
     this.currentMapDef = null;
 
@@ -58,7 +63,7 @@ export class App {
       settings: this.settings,
       audio: this.audio,
       records: this.records,
-      onSelectMap: (mapDef, mode) => this.startGame(mapDef, mode),
+      onSelectMap: (mapDef, mode, difficulty) => this.startGame(mapDef, mode, difficulty),
       onResume: () => this.resumeGame(),
       onQuitToMenu: () => this.quitToMenu(),
       onRetry: () => this.retry(),
@@ -79,6 +84,11 @@ export class App {
     this.modelsLoaded = preloadModels().catch((err) => {
       console.error('Tower models failed to load:', err);
     });
+    // boss chicken loads separately (bigger file; boss/chicks fall back to
+    // UFO models if one spawns before it arrives)
+    preloadChickenModel().catch((err) => {
+      console.error('Chicken boss model failed to load:', err);
+    });
 
     // build the menu backdrop once tile/decoration models are in, so it gets
     // the same kit visuals as real games (MapBuilder falls back gracefully
@@ -90,7 +100,7 @@ export class App {
     this.screens.show('menu');
   }
 
-  async startGame(mapDef, mode = 'campaign') {
+  async startGame(mapDef, mode = 'campaign', difficulty = 'normal') {
     await this.modelsLoaded; // ~instant unless the menu was skipped fast
     if (this.menuBg) {
       this.menuBg.dispose();
@@ -102,6 +112,7 @@ export class App {
     }
     this.currentMapDef = mapDef;
     this.currentMode = mode;
+    this.currentDifficulty = difficulty;
     this.screens.hideEnd();
     this.screens.show('game');
     this.audio.setMood('calm');
@@ -110,10 +121,12 @@ export class App {
       settings: this.settings,
       audio: this.audio,
       mode,
+      difficulty,
+      flameUnlocked: this.records.anyCampaignWon(),
       onPauseRequest: () => this.pauseGame(),
       onGameEnd: (won, wave, stats) => {
         this.records.report(mapDef.id, mode, wave, won);
-        this.screens.showEnd(won, wave, mapDef, mode, stats);
+        this.screens.showEnd(won, wave, mapDef, mode, stats, difficulty);
       },
     });
   }
@@ -139,7 +152,7 @@ export class App {
   }
 
   retry() {
-    this.startGame(this.currentMapDef, this.currentMode);
+    this.startGame(this.currentMapDef, this.currentMode, this.currentDifficulty);
   }
 
   quitToMenu() {

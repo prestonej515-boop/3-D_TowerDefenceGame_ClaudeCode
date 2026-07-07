@@ -95,6 +95,9 @@ export class TowerManager {
       if (impact.slowFactor && impact.directTarget.alive) {
         impact.directTarget.applySlow(impact.slowFactor, impact.slowDuration);
       }
+      if (impact.burnDps && impact.directTarget.alive) {
+        impact.directTarget.applyBurn(impact.burnDps, impact.burnDuration);
+      }
     }
     this.onImpact(impact);
   }

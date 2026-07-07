@@ -5,11 +5,14 @@ import { WAVES, WAVE_HP_GROWTH, ENDLESS } from '../config.js';
 // In endless mode waves are generated from a growing point budget instead of
 // the authored WAVES list, with a boss every ENDLESS.bossEveryNWaves waves.
 export class WaveManager {
-  constructor(enemyManager, { endless = false, onWaveClear, onAllWavesCleared } = {}) {
+  constructor(enemyManager, { endless = false, bossType = 'boss', onWaveClear, onAllWavesCleared } = {}) {
     this.enemyManager = enemyManager;
     this.onWaveClear = onWaveClear || (() => {});
     this.onAllWavesCleared = onAllWavesCleared || (() => {});
 
+    // waves are authored map-agnostically with type 'boss'; each map swaps in
+    // its own boss (chicken / colossus / warden) at spawn + preview time
+    this.bossType = bossType;
     this.endless = endless;
     this.currentWave = 0; // 1-based once started
     this.totalWaves = endless ? Infinity : WAVES.length;
@@ -25,14 +28,23 @@ export class WaveManager {
     return !this.active && this.currentWave < this.totalWaves;
   }
 
+  _resolveType(type) {
+    return type === 'boss' ? this.bossType : type;
+  }
+
   // Spawn groups for the upcoming wave, used by the HUD preview.
+  // Boss groups are resolved to this map's boss so the preview names it.
   getNextWaveGroups() {
     const nextIndex = this.currentWave; // 0-based index of wave currentWave+1
+    let groups;
     if (!this.endless) {
-      return nextIndex < WAVES.length ? WAVES[nextIndex] : null;
+      groups = nextIndex < WAVES.length ? WAVES[nextIndex] : null;
+    } else {
+      if (!this._nextWaveGroups) this._nextWaveGroups = this._generateWave(this.currentWave + 1);
+      groups = this._nextWaveGroups;
     }
-    if (!this._nextWaveGroups) this._nextWaveGroups = this._generateWave(this.currentWave + 1);
-    return this._nextWaveGroups;
+    if (!groups) return null;
+    return groups.map((g) => ({ ...g, type: this._resolveType(g.type) }));
   }
 
   // Random endless wave: spend a budget on weighted enemy groups.
@@ -85,7 +97,7 @@ export class WaveManager {
     for (const group of groups) {
       const delay = group.delay || 0;
       for (let i = 0; i < group.count; i++) {
-        this.spawnQueue.push({ time: delay + i * group.interval, type: group.type });
+        this.spawnQueue.push({ time: delay + i * group.interval, type: this._resolveType(group.type) });
       }
     }
     this.spawnQueue.sort((a, b) => a.time - b.time);
@@ -110,7 +122,13 @@ export class WaveManager {
       this.enemyManager.spawn(event.type, this.hpMultiplier, { speedMult: this.speedMultiplier });
     }
 
-    if (this.spawnQueue.length === 0 && this.enemyManager.aliveCount === 0) {
+    // hasPendingSpawns: a dead boss's delayed spawn-on-death burst still
+    // counts as incoming enemies — don't clear the wave during that gap
+    if (
+      this.spawnQueue.length === 0 &&
+      this.enemyManager.aliveCount === 0 &&
+      !this.enemyManager.hasPendingSpawns
+    ) {
       this.active = false;
       this.onWaveClear(this.currentWave);
       if (!this.endless && this.currentWave >= this.totalWaves) {

@@ -26,6 +26,11 @@
           <button data-mode="campaign" class="active">Campaign</button>
           <button data-mode="endless">Endless</button>
         </div>
+        <div id="difficulty-toggle">
+          <button data-difficulty="easy">Easy</button>
+          <button data-difficulty="normal" class="active">Normal</button>
+          <button data-difficulty="hard">Hard</button>
+        </div>
         <div id="map-cards"></div>
         <button id="map-back-btn" class="menu-btn subtle">&larr; Back</button>
       </div>
@@ -129,7 +134,7 @@
       <div id="placement-hint" class="hidden">Click a green tile to place &middot; Esc or right-click to cancel</div>
       <div id="toast-container"></div>
       <div id="damage-flash"></div>
-      <div id="hotkey-hint">1-5: towers &middot; U: upgrade &middot; S: sell &middot; Space: wave/speed &middot; Esc: pause</div>
+      <div id="hotkey-hint">1-6: towers &middot; U: upgrade &middot; S: sell &middot; Space: wave/speed &middot; Esc: pause</div>
     </div>
 
     <script type="module" src="/src/main.js"></script>

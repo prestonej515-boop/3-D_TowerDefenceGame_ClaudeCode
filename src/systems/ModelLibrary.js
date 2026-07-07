@@ -31,6 +31,10 @@ const MODEL_NAMES = [
   // mortar (squat round base + catapult)
   'tower-round-base',
   'weapon-catapult',
+  // flame (square tower, c-series)
+  'tower-square-bottom-c',
+  'tower-square-middle-c',
+  'tower-square-top-c',
   // enemies
   'enemy-ufo-a',
   'enemy-ufo-b',

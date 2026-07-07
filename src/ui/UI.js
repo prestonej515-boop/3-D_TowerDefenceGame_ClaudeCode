@@ -56,6 +56,7 @@ export class UI {
       let tooltip = `Damage: ${lv1.damage}\nFire rate: ${lv1.fireRate}/s\nRange: ${lv1.range}\nDPS: ${(lv1.damage * lv1.fireRate).toFixed(0)}`;
       if (lv1.splashRadius) tooltip += `\nSplash radius: ${lv1.splashRadius}`;
       if (lv1.slowFactor) tooltip += `\nSlow: ${Math.round((1 - lv1.slowFactor) * 100)}% for ${lv1.slowDuration}s`;
+      if (lv1.burnDps) tooltip += `\n🔥 Burn: ${lv1.burnDps}/s for ${lv1.burnDuration}s`;
       if (lv1.minRange) tooltip += `\nMin range: ${lv1.minRange} (can't hit closer)`;
       if (cfg.elevatedOnly) tooltip += `\n⛰ Elevated platforms only`;
       if (cfg.neverSeesHidden) tooltip += `\n✕ Never sees Hidden enemies`;
@@ -64,13 +65,17 @@ export class UI {
         const tier = cfg.levels.findIndex((l) => l.seesHidden);
         if (tier > 0) tooltip += `\n👁 Sees Hidden at tier ${tier + 1}`;
       }
+      // campaign-win unlockables render locked until earned
+      const locked = cfg.unlockedBy === 'campaignWin' && !this.game.flameUnlocked;
+      if (locked) tooltip = `Win any map's campaign to unlock`;
       btn.innerHTML = `
-        <span class="t-key">${hotkey}</span>
+        <span class="t-key">${locked ? '🔒' : hotkey}</span>
         <div class="t-name">${cfg.name}</div>
         <div class="t-swatch" style="background:#${cfg.color.toString(16).padStart(6, '0')}"></div>
-        <div class="t-cost">${cfg.cost} gold</div>
+        <div class="t-cost">${locked ? 'Locked' : `${cfg.cost} gold`}</div>
         <div class="t-desc">${cfg.description}</div>
         <div class="t-tooltip">${tooltip}</div>`;
+      if (locked) btn.classList.add('locked');
       btn.onclick = () => this.game.togglePlacement(type);
       this.towerBar.appendChild(btn);
       this.towerButtons[type] = btn;
@@ -197,6 +202,7 @@ export class UI {
     ];
     if (s.splashRadius) rows.push(['Splash radius', s.splashRadius]);
     if (s.slowFactor) rows.push(['Slow', `${Math.round((1 - s.slowFactor) * 100)}% / ${s.slowDuration}s`]);
+    if (s.burnDps) rows.push(['Burn', `${s.burnDps}/s for ${s.burnDuration}s`]);
     if (s.minRange) rows.push(['Min range', s.minRange]);
     rows.push(['Sees Hidden', tower.cfg.neverSeesHidden ? 'Never' : tower.canSeeHidden ? 'Yes' : 'No']);
     this.statsTable.innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
@@ -226,6 +232,10 @@ export class UI {
       if (next.slowFactor) {
         compare.push(['Slow', Math.round((1 - s.slowFactor) * 100), Math.round((1 - next.slowFactor) * 100), (v) => `${v}%`]);
         compare.push(['Slow time', s.slowDuration, next.slowDuration, (v) => `${v}s`]);
+      }
+      if (next.burnDps) {
+        compare.push(['Burn', s.burnDps, next.burnDps, (v) => `${v}/s`]);
+        compare.push(['Burn time', s.burnDuration, next.burnDuration, (v) => `${v}s`]);
       }
       for (const [label, cur, nxt, fmt] of compare) {
         if (cur === nxt) continue;

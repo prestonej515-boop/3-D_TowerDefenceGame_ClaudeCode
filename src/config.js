@@ -73,18 +73,77 @@ export const ENEMIES = {
     size: 0.3,
   },
   boss: {
-    name: 'Boss',
+    name: 'Chicken Boss',
     hp: 2400,
     speed: 0.9,
     reward: 250,
     livesCost: 10,
-    color: 0x8c1f1f,
+    color: 0xf5e6c8,
     size: 1.3,
     boss: true,
-    summons: { type: 'minion', count: 4, interval: 8 },
+    summons: { type: 'chick', count: 3, interval: 8 },
     // below this HP fraction the boss enrages: faster and tinted hot
     enrage: { hpThreshold: 0.35, speedMult: 1.7 },
+    // on death it bursts into a final brood at its path position; the delay
+    // matches the corpse animation — chicks erupt as the roast lands
+    spawnOnDeath: { type: 'chick', count: 6, delay: 1.0 },
+    // long corpse linger: launch -> roast lands -> brood -> flatten
+    deathLinger: 2.2,
   },
+  chick: {
+    name: 'Chick',
+    hp: 90,
+    speed: 4.2,
+    reward: 6,
+    livesCost: 1,
+    color: 0xffd94d,
+    size: 0.4,
+  },
+  // Dunes boss: no tricks up front — it just refuses to stay dead. Splits
+  // into two halves, each of which splits again into armored enemies.
+  bossDunes: {
+    name: 'Dune Colossus',
+    hp: 2000,
+    speed: 1.0,
+    reward: 200,
+    livesCost: 10,
+    color: 0xd08a3d,
+    size: 1.25,
+    boss: true,
+    spawnOnDeath: { type: 'colossusHalf', count: 2, delay: 0.4 },
+  },
+  colossusHalf: {
+    name: 'Colossus Half',
+    hp: 750,
+    speed: 1.5,
+    reward: 60,
+    livesCost: 4,
+    color: 0xc47a35,
+    size: 0.95,
+    spawnOnDeath: { type: 'armored', count: 2, delay: 0.3 },
+  },
+  // Glacier boss: summons minions and takes only 10% damage while any of its
+  // own summons are alive — kill the escort first.
+  bossGlacier: {
+    name: 'Frost Warden',
+    hp: 2600,
+    speed: 0.85,
+    reward: 250,
+    livesCost: 10,
+    color: 0x7fd4e8,
+    size: 1.3,
+    boss: true,
+    summons: { type: 'minion', count: 4, interval: 7, initial: 1.5 },
+    shieldedBySummons: true,
+  },
+};
+
+// Player-selected difficulty (map select). Multiplies on top of each map's
+// own modifiers; 'normal' is deliberately harder than the original tuning.
+export const DIFFICULTY = {
+  easy: { label: 'Easy', hp: 0.85, speed: 1.0, gold: 1.1 },
+  normal: { label: 'Normal', hp: 1.15, speed: 1.0, gold: 1.0 },
+  hard: { label: 'Hard', hp: 1.5, speed: 1.08, gold: 0.9 },
 };
 
 // Per-wave enemy HP multiplier: hp * (1 + hpGrowth * (waveIndex))
@@ -166,6 +225,22 @@ export const TOWERS = {
       { range: 11, minRange: 3.5, damage: 70, fireRate: 0.6, splashRadius: 3.6, upgradeCost: 200, seesHidden: true },
     ],
   },
+  flame: {
+    name: 'Flame',
+    description: 'Ignites foes — burn damage over time',
+    cost: 110,
+    color: 0xe25822,
+    projectileColor: 0xffb347,
+    projectileSpeed: 22,
+    projectileSize: 0.16,
+    // unlocked by winning any map's campaign (see Records.anyCampaignWon)
+    unlockedBy: 'campaignWin',
+    levels: [
+      { range: 5.5, damage: 6, fireRate: 1.8, burnDps: 14, burnDuration: 3.0 },
+      { range: 6, damage: 10, fireRate: 2.0, burnDps: 24, burnDuration: 3.5, upgradeCost: 90 },
+      { range: 6.5, damage: 16, fireRate: 2.2, burnDps: 38, burnDuration: 4.0, upgradeCost: 170 },
+    ],
+  },
 };
 
 // Each wave is a list of spawn groups processed in order.
@@ -187,29 +262,29 @@ export const WAVES = [
     { type: 'hidden', count: 3, interval: 1.5, delay: 6 },
   ],
   [
-    { type: 'armored', count: 6, interval: 1.8 },
-    { type: 'swarm', count: 10, interval: 0.25, delay: 3 },
+    { type: 'armored', count: 7, interval: 1.8 },
+    { type: 'swarm', count: 12, interval: 0.25, delay: 3 },
   ],
   [
-    { type: 'basic', count: 14, interval: 0.7 },
-    { type: 'armored', count: 5, interval: 2.0, delay: 3 },
-    { type: 'hidden', count: 5, interval: 1.2, delay: 5 },
+    { type: 'basic', count: 16, interval: 0.7 },
+    { type: 'armored', count: 6, interval: 2.0, delay: 3 },
+    { type: 'hidden', count: 6, interval: 1.2, delay: 5 },
   ],
   [
-    { type: 'swarm', count: 18, interval: 0.22 },
-    { type: 'armored', count: 6, interval: 1.6, delay: 4 },
+    { type: 'swarm', count: 20, interval: 0.22 },
+    { type: 'armored', count: 7, interval: 1.6, delay: 4 },
     { type: 'mage', count: 1, interval: 1, delay: 8 },
   ],
   [
-    { type: 'basic', count: 12, interval: 0.7 },
-    { type: 'armored', count: 8, interval: 1.5, delay: 2 },
-    { type: 'swarm', count: 12, interval: 0.22, delay: 6 },
-    { type: 'hidden', count: 6, interval: 1.0, delay: 8 },
+    { type: 'basic', count: 14, interval: 0.7 },
+    { type: 'armored', count: 9, interval: 1.5, delay: 2 },
+    { type: 'swarm', count: 14, interval: 0.22, delay: 6 },
+    { type: 'hidden', count: 7, interval: 1.0, delay: 8 },
   ],
   [
-    { type: 'armored', count: 10, interval: 1.3 },
-    { type: 'swarm', count: 20, interval: 0.2, delay: 3 },
-    { type: 'basic', count: 10, interval: 0.6, delay: 8 },
+    { type: 'armored', count: 12, interval: 1.3 },
+    { type: 'swarm', count: 24, interval: 0.2, delay: 3 },
+    { type: 'basic', count: 12, interval: 0.6, delay: 8 },
     { type: 'mage', count: 1, interval: 1, delay: 6 },
     { type: 'boss', count: 1, interval: 1, delay: 14 },
   ],
@@ -221,7 +296,7 @@ export const WAVES = [
 // ---------------------------------------------------------------------------
 export const ENDLESS = {
   baseBudget: 40,
-  budgetPerWave: 14, // budget = baseBudget + budgetPerWave * (wave - 1)
+  budgetPerWave: 16, // budget = baseBudget + budgetPerWave * (wave - 1)
   hpGrowthPerWave: 0.08, // hp mult = 1 + this * (wave - 1)
   speedGrowthPerWave: 0.012, // speed mult = min(1 + this * (wave - 1), speedCap)
   speedCap: 1.6,

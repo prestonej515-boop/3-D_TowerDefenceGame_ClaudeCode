@@ -22,6 +22,8 @@ export class Projectile {
     this.splashRadius = opts.splashRadius || 0;
     this.slowFactor = opts.slowFactor || null;
     this.slowDuration = opts.slowDuration || 0;
+    this.burnDps = opts.burnDps || null;
+    this.burnDuration = opts.burnDuration || 0;
     // ballistic arc (mortar): height driven by initial horizontal distance
     this.arc = !!opts.arc;
     if (this.arc) {
@@ -85,6 +87,8 @@ export class Projectile {
         splashRadius: this.splashRadius,
         slowFactor: this.slowFactor,
         slowDuration: this.slowDuration,
+        burnDps: this.burnDps,
+        burnDuration: this.burnDuration,
       };
     }
 
